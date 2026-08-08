@@ -67,18 +67,54 @@ jobs:
       - name: THE DEVELOPER WORKS
         id: agent
         if: steps.ideas.outputs.count != '0'
+        timeout-minutes: 45
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          # per-session budget cap in USD; override via a repo variable if needed
+          MAX_SESSION_USD: ${{ vars.MAX_SESSION_USD || '8' }}
         run: |
           set +e
           # stream-json = the full turn-by-turn transcript (every message, tool
-          # call and tool result), one JSON object per line. This is the telemetry.
+          # call and tool result), one JSON object per line. This is the telemetry —
+          # and the budget watchdog's meter.
           claude -p "$(cat agent/AGENT_PROMPT.md)" \
             --model claude-opus-5 \
             --dangerously-skip-permissions \
             --verbose \
-            --output-format stream-json > agent/claude_transcript.jsonl 2> agent/claude_stderr.log
-          echo "claude exit code: $?"
+            --max-turns 250 \
+            --output-format stream-json > agent/claude_transcript.jsonl 2> agent/claude_stderr.log &
+          CLAUDE_PID=$!
+
+          # price the transcript's usage events (Opus 5: $5/M in, $25/M out,
+          # 1.25x cache write, 0.1x cache read). Tolerant of a partial last line.
+          usage_cost() {
+            jq -Rrs '
+              [ split("\n")[] | select(length > 0) | (fromjson? // empty)
+                | select(.type == "assistant") | .message.usage // empty ]
+              | ( map(.input_tokens // 0) | add // 0 ) as $in
+              | ( map(.output_tokens // 0) | add // 0 ) as $out
+              | ( map(.cache_creation_input_tokens // 0) | add // 0 ) as $cw
+              | ( map(.cache_read_input_tokens // 0) | add // 0 ) as $cr
+              | ($in * 5 + $out * 25 + $cw * 6.25 + $cr * 0.5) / 1000000
+            ' agent/claude_transcript.jsonl 2>/dev/null || echo 0
+          }
+
+          BUDGET_KILLED=0
+          while kill -0 $CLAUDE_PID 2>/dev/null; do
+            sleep 20
+            est=$(usage_cost)
+            echo "watchdog: estimated spend \$${est} / \$${MAX_SESSION_USD}"
+            if awk "BEGIN { exit !($est > $MAX_SESSION_USD) }"; then
+              echo "BUDGET WATCHDOG: \$${est} exceeds \$${MAX_SESSION_USD} — terminating the developer mid-thought"
+              BUDGET_KILLED=1
+              kill $CLAUDE_PID 2>/dev/null
+              sleep 5
+              kill -9 $CLAUDE_PID 2>/dev/null
+              break
+            fi
+          done
+          wait $CLAUDE_PID
+          echo "claude exit code: $? (budget-killed: $BUDGET_KILLED)"
 
           # scrub secrets before the transcript leaves this runner in any form —
           # if the agent ever echoes its environment, the key would be in here
@@ -97,8 +133,11 @@ jobs:
               open(path, "w").write(s)
           PY
 
+          # spend accounting: the result event is authoritative; if the watchdog
+          # killed the session there is no result event, so bill the usage sum
           cost=$(jq -r 'select(.type=="result") | .total_cost_usd // empty' agent/claude_transcript.jsonl 2>/dev/null | tail -1)
-          [ -z "$cost" ] && cost=5
+          [ -z "$cost" ] && cost=$(usage_cost)
+          case "$cost" in (''|0) cost=5;; esac
           cents=$(printf '%.0f' "$(echo "$cost * 100" | bc -l)")
           echo "spend_cents=$cents" >> "$GITHUB_OUTPUT"
           echo "developer session cost: \$$cost"

@@ -95,15 +95,33 @@ You need four accounts: GitHub, Anthropic, Stripe, Fly.io. Budget ~45 minutes.
 
 ## 2. Anthropic (the developer's brain)
 
-1. platform.claude.com → create an API key. This key funds the developer;
-   scope it to its own workspace if you can.
+1. platform.claude.com → **create a dedicated workspace** for the bird, and an
+   API key inside it. The key funds the developer and nothing else.
 2. Billing → **enable auto-reload** (e.g. reload $25 when below $5) so the
    account never runs dry mid-release. There is no API to convert Stripe money
    into credits — the web app's ledger *authorizes* spending; auto-reload
    actually *pays* for it from your card. Same money, one hop later.
-3. Set a **monthly spend limit** (e.g. $50) as the blast-radius cap. A release
-   costs roughly $2–6 of Opus 5 tokens; the workflow also has a 60-minute
-   timeout as a backstop.
+3. Set a **monthly spend limit on that workspace** (e.g. $50). This is the
+   server-side hard cap — when it's hit, the API refuses requests, whatever
+   any session thinks it's doing.
+
+### Budget containment, layered
+
+Claude Code has no native per-session dollar cap, so the workflow builds one
+and surrounds it with backstops:
+
+| layer | mechanism | bounds |
+|---|---|---|
+| **budget watchdog** | the workflow prices the streaming transcript every 20s and kills the session when estimated spend exceeds `MAX_SESSION_USD` (default **$8**; override with a repo *variable* of that name) | one session |
+| turn cap | `--max-turns 250` | one session |
+| step timeout | 45 min on the agent step (60 on the job) | one session |
+| concurrency | one run at a time (workflow `concurrency` group + the app's active-run check) | run frequency |
+| economics | runs only trigger at pot ≥ $10, and overspend drives the pot *negative* — an expensive failure automatically raises the revenue bar for the next release | long-run average |
+| workspace limit | Anthropic Console monthly cap (step 3 above) | worst case per month |
+
+Net effect: an average release costs $2–6, a runaway session costs at most
+~$8–9 (watchdog fires at $8, plus the in-flight request), and a whole month of
+disasters can't exceed the workspace cap.
 
 ## 3. Stripe (the money tube)
 
