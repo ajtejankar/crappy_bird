@@ -7,7 +7,7 @@ data/
 !.env.example
 agent/ideas.json
 agent/release.json
-agent/claude_output.json
+agent/claude_transcript.jsonl
 agent/claude_stderr.log
 agent/screenshots/
 .DS_Store

@@ -48,6 +48,7 @@ The downloaded file never gets the injection; the begging is a hosting exclusive
 | `agent/verify_game.py` | the verification gate (Playwright) |
 | `scripts/e2e.py` | full end-to-end UI test, including the 13" no-scroll assertions |
 | `.github/workflows/develop.yml` | the entire development lifecycle |
+| `transcripts/` | full agent-run transcripts (secret-scrubbed, gzipped) — one per release, plus failed runs |
 | `index.html` | the original v1, untouched, for posterity |
 
 ## Run it locally (no accounts needed)
@@ -171,8 +172,11 @@ Finally go back to **1.4** and set the `APP_URL` GitHub secret to the same URL.
 ## Security posture (a.k.a. why paid prompt injection is fine here)
 
 Players pay to put arbitrary text in an AI's prompt. Containment is structural,
-not polite: the CI sandbox holds only an Anthropic key with a spend cap; the
-gate rejects releases that touch anything outside `games/`, exceed 100KB, or
-smell like network calls; and the app serves every game under a CSP that blocks
-all egress anyway. A successful injection therefore produces, at most, a weird
-game feature — which is the product working as intended.
+not polite: the agent step holds no git credentials (`persist-credentials:
+false` — push auth exists only in the ship step, after the gate); the gate runs
+a pristine HEAD copy of the verifier so the agent can't tamper with its own
+judge; releases that touch anything outside `games/`, edit old versions, exceed
+100KB, or smell like network calls are rejected wholesale; the CI sandbox holds
+only an Anthropic key with a spend cap; and the app serves every game under a
+CSP that blocks all egress anyway. A successful injection therefore produces,
+at most, a weird game feature — which is the product working as intended.
