@@ -97,6 +97,8 @@ def verify(path: str, screenshot_dir: str = "agent/screenshots", timeout_s: int 
         failures.append("the death hook string 'crappy-bird:death' is missing — see CONTRACT.md #4")
     if not re.search(r"crappy-bird:ready", text):
         failures.append("the ready hook string 'crappy-bird:ready' is missing — see CONTRACT.md #4")
+    if not re.search(r"CustomEvent", text):
+        failures.append("no CustomEvent dispatch found — the injected overlay needs it, see CONTRACT.md #4")
 
     if failures:
         _report(failures)
@@ -152,6 +154,13 @@ def verify(path: str, screenshot_dir: str = "agent/screenshots", timeout_s: int 
                 def tap():
                     frame.click("#game")
 
+                # the same-document contract: the injected overlay listens for a
+                # CustomEvent, so verify the game dispatches one on death too
+                frame.evaluate(
+                    "window.addEventListener('crappy-bird:death',"
+                    " () => window.parent.postMessage({type: 'customevent:death'}, '*'))"
+                )
+
                 # ready handshake
                 if not wait_for("crappy-bird:ready", 10_000):
                     failures.append("no crappy-bird:ready within 10s of load")
@@ -171,6 +180,9 @@ def verify(path: str, screenshot_dir: str = "agent/screenshots", timeout_s: int 
                 else:
                     death = next(m for m in msgs() if m and m.get("type") == "crappy-bird:death")
                     print(f"death observed: score={death.get('score')} cause={death.get('cause')!r}")
+                    if not any(m and m.get("type") == "customevent:death" for m in msgs()):
+                        failures.append("death postMessage fired but no CustomEvent — CONTRACT.md #4 "
+                                        "requires both (the hosted overlay depends on the CustomEvent)")
                 page.wait_for_timeout(1200)
                 page.screenshot(path=str(shots / f"{stem}.dead.png"))
 

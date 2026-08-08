@@ -27,15 +27,26 @@ in the loop. The money pays for the API tokens. That's the whole company.
 
 ## Layout
 
+**Two screens, no iframes, no scrolling.** The lobby (`/`) is a single-viewport
+hero — war chest, developer status, ticker, one enormous START CRAPPING button —
+designed to fit a 13" laptop (1280×650) without scrolling. The game (`/play`)
+is the game HTML served as the *whole document*, so keyboard input works
+natively and the game's own CSS keeps it inside the viewport. At serve time the
+server injects "the landlord" — a small overlay script — into the game page:
+it hears the death event, rolls the dice, and drops the ransom note in-document.
+The downloaded file never gets the injection; the begging is a hosting exclusive.
+
 | path | what |
 |---|---|
 | `games/index.v{N}.html` | every game version, immutable history, single files ≤100KB |
 | `games/latest.json` | which version is live |
 | `games/CHANGELOG.md` | the AI developer's public memory |
 | `games/CONTRACT.md` | invariants every release must keep |
-| `app/` | FastAPI web app: shell, Stripe, ideas, ledger, trigger |
+| `app/` | FastAPI web app: lobby, game serving + landlord injection, Stripe, ideas, ledger, trigger |
+| `app/static/landlord.html` | the shakedown overlay injected into `/play` at serve time |
 | `agent/AGENT_PROMPT.md` | the mission briefing Claude Code runs with |
 | `agent/verify_game.py` | the verification gate (Playwright) |
+| `scripts/e2e.py` | full end-to-end UI test, including the 13" no-scroll assertions |
 | `.github/workflows/develop.yml` | the entire development lifecycle |
 | `index.html` | the original v1, untouched, for posterity |
 
@@ -50,11 +61,12 @@ Open http://localhost:8080. With no Stripe key set, **dev mode** is on: the pay
 button "charges" fake money instantly so you can test the whole loop —
 die → get shaken down → pay $3 → submit 3 ideas → watch the war chest.
 
-Run the verification gate on the current game:
+Run the verification gate on the current game, and the full UI test suite:
 
 ```sh
 uv run agent/verify_game.py install     # once, downloads chromium
 uv run agent/verify_game.py verify games/index.v1.html
+uv run scripts/e2e.py                   # needs the server running, see file header
 ```
 
 ---

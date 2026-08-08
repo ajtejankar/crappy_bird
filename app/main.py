@@ -18,7 +18,9 @@ from pathlib import Path
 
 import httpx
 from fastapi import FastAPI, Header, HTTPException, Request
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse, Response
+from fastapi.responses import (
+    FileResponse, HTMLResponse, PlainTextResponse, RedirectResponse, Response,
+)
 
 from . import db
 
@@ -135,10 +137,31 @@ async def changelog_page():
     return _static("changelog.html")
 
 
-@app.get("/play/latest", response_class=HTMLResponse)
+LANDLORD_TEMPLATE = (STATIC_DIR / "landlord.html").read_text()
+
+
+def _inject_landlord(game_html: str, version: int) -> str:
+    """Append the shakedown overlay to a game document at serve time.
+
+    The downloadable file stays raw; only the hosted page begs. Config values
+    are baked in server-side so the injected page needs zero network access.
+    """
+    cfg = json.dumps({
+        "pot_cents": db.pot_cents(),
+        "threshold_cents": FUND_THRESHOLD_CENTS,
+        "block_probability": BLOCK_PROBABILITY,
+        "version": version,
+        "dev_mode": DEV_MODE,
+    })
+    snippet = LANDLORD_TEMPLATE.replace("__CFG__", cfg)
+    if "</body>" in game_html:
+        return game_html.replace("</body>", snippet + "\n</body>", 1)
+    return game_html + snippet  # browsers execute trailing content anyway
+
+
+@app.get("/play", response_class=HTMLResponse)
 async def play_latest():
-    v = await current_version()
-    return await play_version(v)
+    return await play_version(await current_version())
 
 
 @app.get("/play/v{version}", response_class=HTMLResponse)
@@ -148,7 +171,7 @@ async def play_version(version: int):
     text = await _fetch_game_text(f"index.v{version}.html")
     if text is None:
         raise HTTPException(404, "that version of the bird does not exist")
-    return HTMLResponse(text, headers={"Content-Security-Policy": GAME_CSP})
+    return HTMLResponse(_inject_landlord(text, version), headers={"Content-Security-Policy": GAME_CSP})
 
 
 @app.get("/download")
@@ -217,20 +240,21 @@ async def api_ideas_public():
 
 # ------------------------------------------------------------------ Stripe
 
-@app.post("/api/checkout")
-async def create_checkout(request: Request):
-    body = await request.json()
-    try:
-        amount = int(body.get("amount_cents", 0))
-    except (TypeError, ValueError):
-        raise HTTPException(400, "amount_cents must be an integer")
+@app.get("/checkout")
+async def checkout(amount_cents: int):
+    """Plain-navigation checkout: the game page's CSP forbids fetch, so the pay
+    button just navigates here and we bounce to Stripe (or, in dev mode,
+    straight to the thanks page with a fake payment)."""
+    amount = max(0, amount_cents)
     if amount < MIN_PAYMENT_CENTS:
         raise HTTPException(400, "the bird's dignity has a floor: $1 minimum")
     if amount > MAX_PAYMENT_CENTS:
         raise HTTPException(400, "that's too much. genuinely. seek help. ($500 max)")
 
     if DEV_MODE:
-        raise HTTPException(400, "dev mode: use /api/dev/pay")
+        session_id = f"dev_{secrets.token_hex(8)}"
+        _register_paid_session(session_id, amount)
+        return RedirectResponse(f"/thanks?session_id={session_id}", status_code=303)
 
     import stripe
     stripe.api_key = STRIPE_SECRET_KEY
@@ -253,9 +277,9 @@ async def create_checkout(request: Request):
             },
         }],
         success_url=f"{APP_BASE_URL}/thanks?session_id={{CHECKOUT_SESSION_ID}}",
-        cancel_url=f"{APP_BASE_URL}/?cancelled=1",
+        cancel_url=f"{APP_BASE_URL}/play?cancelled=1",
     )
-    return {"url": session.url}
+    return RedirectResponse(session.url, status_code=303)
 
 
 def _net_cents(amount_cents: int) -> int:
@@ -331,22 +355,6 @@ async def submit_idea(request: Request):
     # the pot may already be funded and waiting on its first idea
     maybe_trigger_dev_cycle()
     return {"ok": True, "credits_left": result}
-
-
-# ---------------------------------------------------------------- dev mode
-
-@app.post("/api/dev/pay")
-async def dev_pay(request: Request):
-    """Fake payment for local dev. Only exists when Stripe is not configured."""
-    if not DEV_MODE:
-        raise HTTPException(404)
-    body = await request.json()
-    amount = int(body.get("amount_cents", 100))
-    amount = max(MIN_PAYMENT_CENTS, min(MAX_PAYMENT_CENTS, amount))
-    session_id = f"dev_{secrets.token_hex(8)}"
-    _register_paid_session(session_id, amount)
-    # relative on purpose: dev mode must work regardless of APP_BASE_URL
-    return {"url": f"/thanks?session_id={session_id}"}
 
 
 # ---------------------------------------------------- the dev-cycle trigger

@@ -1,0 +1,214 @@
+<!-- THE LANDLORD: injected by the server after </canvas>-land, before </body>.
+     Never part of the downloadable game file. Owns the shakedown, nothing else.
+     All ids/classes prefixed cb- to stay out of the game's namespace. -->
+<style>
+  #cb-shakedown {
+    position:fixed; inset:0; z-index:9000; display:none;
+    background:rgba(4,4,10,.82); align-items:center; justify-content:center; padding:12px;
+    font-family:"Comic Sans MS","Chalkboard SE","Comic Neue",cursive,system-ui;
+  }
+  #cb-shakedown.cb-on { display:flex; }
+  #cb-ransom {
+    width:min(94vw,440px); max-height:96vh; overflow:auto;
+    background:#fffbe6; color:#101010;
+    border:4px solid #000; box-shadow:10px 10px 0 rgba(0,0,0,.6);
+    transform:rotate(-.6deg); padding:14px 18px 12px; position:relative;
+    animation:cb-slam .28s cubic-bezier(.2,2.6,.4,1);
+  }
+  @keyframes cb-slam { from { transform:scale(1.6) rotate(-6deg); opacity:0; } }
+  #cb-ransom h1 { margin:0 0 2px; font-size:21px; color:#c0392b; text-align:center; }
+  #cb-sub { text-align:center; margin:0 0 8px; font-size:11px; color:#555; }
+  #cb-stamp { position:absolute; top:-12px; right:-10px; padding:3px 9px;
+    background:#ff00ff; color:#fff; border:2px solid #000; font-size:10px;
+    letter-spacing:1px; transform:rotate(8deg); box-shadow:3px 3px 0 rgba(0,0,0,.4); }
+  #cb-verdict { background:#111; color:#ffe14d; border:2px solid #000;
+    font-size:11.5px; padding:6px 9px; margin:8px 0; text-align:center; }
+  #cb-clock { font-size:34px; text-align:center; letter-spacing:3px; margin:4px 0 0;
+    font-variant-numeric:tabular-nums; }
+  #cb-clocksub { text-align:center; font-size:10px; color:#777; margin:0 0 10px; }
+  #cb-payrow { display:flex; gap:7px; align-items:stretch; margin:6px 0 2px; }
+  #cb-payrow .cb-dollar { display:flex; align-items:center; font-size:20px; }
+  #cb-amount { width:74px; font-family:inherit; font-size:20px; text-align:center;
+    border:3px solid #000; background:#fff; padding:3px; }
+  #cb-paybtn { flex:1; font-family:inherit; font-size:14px; cursor:pointer;
+    background:#ffe14d; border:3px solid #000; box-shadow:4px 4px 0 rgba(0,0,0,.45);
+    padding:7px 5px; font-weight:bold; color:#101010; }
+  #cb-paybtn:active { transform:translate(2px,2px); box-shadow:2px 2px 0 rgba(0,0,0,.45); }
+  #cb-paymath { text-align:center; font-size:10.5px; margin:5px 0 0; color:#333; min-height:14px; }
+  #cb-chestline { margin-top:8px; border-top:2px dashed #bbb; padding-top:7px;
+    font-size:10.5px; color:#444; text-align:center; }
+  #cb-fineprint { font-size:9px; color:#999; margin-top:7px; line-height:1.5; }
+  #cb-waitout { display:block; margin:8px auto 0; background:none; border:none;
+    font-family:inherit; font-size:10px; color:#999; text-decoration:underline; cursor:pointer; }
+
+  #cb-lobbylink { position:fixed; top:8px; left:8px; z-index:8000;
+    font-family:"Comic Sans MS","Chalkboard SE",cursive,system-ui; font-size:11px;
+    color:#fffbe6; background:rgba(0,0,0,.45); border:2px solid #000;
+    padding:2px 8px; text-decoration:none; opacity:.75; }
+  #cb-lobbylink:hover { opacity:1; }
+
+  #cb-strip { position:fixed; left:50%; bottom:0; transform:translate(-50%,110%);
+    z-index:8000; background:#111; color:#ffe14d; border:2px solid #ffe14d; border-bottom:none;
+    font-family:"Comic Sans MS","Chalkboard SE",cursive,system-ui; font-size:11px;
+    padding:4px 14px; white-space:nowrap; transition:transform .4s; }
+  #cb-strip.cb-on { transform:translate(-50%,0); }
+
+  #cb-devbadge { position:fixed; top:8px; right:8px; z-index:8000; background:#c0392b;
+    color:#fff; font-size:10px; padding:2px 8px; border:2px solid #000;
+    font-family:"Comic Sans MS",cursive,system-ui; transform:rotate(2deg); }
+</style>
+
+<a id="cb-lobbylink" href="/">← lobby</a>
+
+<div id="cb-shakedown">
+  <div id="cb-ransom">
+    <div id="cb-stamp">TOTALLY LEGAL</div>
+    <h1>YOUR BIRD HAS BEEN IMPOUNDED</h1>
+    <p id="cb-sub">pursuant to section 4(b) of terms nobody wrote</p>
+    <div id="cb-verdict"></div>
+    <div id="cb-clock">5:00</div>
+    <p id="cb-clocksub">time until we pretend to forgive you</p>
+    <div id="cb-payrow">
+      <span class="cb-dollar">$</span>
+      <input id="cb-amount" type="number" min="1" max="500" step="1" value="1" inputmode="numeric">
+      <button id="cb-paybtn">PAY THE BIRD</button>
+    </div>
+    <div id="cb-paymath"></div>
+    <div id="cb-chestline"></div>
+    <div id="cb-fineprint">
+      pay-what-you-want, $1 minimum. every whole dollar = one feature idea fed to the
+      unsupervised AI that develops this game. nothing forces you to pay. the timer is fake.
+      refreshing works. we are relying entirely on your amusement, which is more reliable
+      than your fear.
+    </div>
+    <button id="cb-waitout">no. i will wait out the fake timer on principle.</button>
+  </div>
+</div>
+
+<div id="cb-strip"></div>
+
+<script>
+(function () {
+  "use strict";
+  var CFG = __CFG__;   // {pot_cents, threshold_cents, block_probability, version, dev_mode}
+  var $ = function (id) { return document.getElementById(id); };
+
+  if (CFG.dev_mode) {
+    var badge = document.createElement('div');
+    badge.id = 'cb-devbadge';
+    badge.textContent = 'DEV MODE — money is fake, regret is real';
+    document.body.appendChild(badge);
+  }
+
+  var VERDICTS = [
+    function (s) { return 'cause of death: incompetence. score: ' + s + '. the pipe is pressing charges.'; },
+    function (s) { return 'you scored ' + s + '. the bird deserved a better pilot. pay up.'; },
+    function (s) { return 'score: ' + s + '. our actuary says that\'s a you-problem.'; },
+    function (s) { return 'incident report #' + Math.floor(Math.random()*9000+1000) + ': bird down, score ' + s + ', wallet located.'; },
+    function (s) { return 'the bird died ' + (s === 0 ? 'immediately. IMMEDIATELY.' : 'with a score of ' + s + '.') + ' tribute is customary.'; },
+  ];
+  var PAYLABELS = [
+    [1,   'PAY $1 — the legal minimum of respect'],
+    [2,   'PAY $2 — two ideas. a conspiracy.'],
+    [3,   'PAY $3 — three ideas: a manifesto'],
+    [5,   'PAY $5 — five ideas?? seek power responsibly'],
+    [10,  'PAY $10 — you are single-handedly funding a release'],
+    [20,  'PAY $20 — the bird will name a pipe after you*'],
+    [50,  'PAY $50 — this is a cry for help and we accept it'],
+    [100, 'PAY $100 — the bird is uncomfortable but grateful'],
+  ];
+  var STRIPS = [
+    'war chest: {pot} / {thr} — die more generously',
+    'the machine needs {gap} more to ship the next bad idea',
+    '{pot} raised. every death is a fundraiser.',
+  ];
+
+  var timer = null, open = false;
+
+  function money(c) { return '$' + (c / 100).toFixed(2); }
+
+  function updateMath() {
+    var v = parseFloat($('cb-amount').value);
+    if (isNaN(v) || v < 1) {
+      $('cb-paymath').textContent = 'minimum $1. the bird has a floor, and you are looking at it.';
+      $('cb-paybtn').textContent = 'PAY THE BIRD';
+      return;
+    }
+    var n = Math.floor(v), label = 'PAY $' + n;
+    for (var i = 0; i < PAYLABELS.length; i++) if (v >= PAYLABELS[i][0]) label = PAYLABELS[i][1];
+    $('cb-paybtn').textContent = label;
+    var frac = v - n;
+    $('cb-paymath').textContent = '= ' + n + ' feature idea' + (n === 1 ? '' : 's') + ' fed to the machine' +
+      (frac > 0 ? ' (the ' + Math.round(frac*100) + '¢ remainder is a tip. the bird keeps it.)' : '');
+  }
+
+  function show(score) {
+    open = true;
+    $('cb-verdict').textContent = VERDICTS[Math.floor(Math.random()*VERDICTS.length)](score);
+    $('cb-chestline').textContent = 'war chest: ' + money(CFG.pot_cents) + ' of ' + money(CFG.threshold_cents) +
+      ' — your dollar funds v' + (CFG.version + 1) + ' of this game. that is a threat.';
+    $('cb-shakedown').classList.add('cb-on');
+    updateMath();
+    var left = 300;
+    clearInterval(timer);
+    timer = setInterval(function () {
+      left--;
+      $('cb-clock').textContent = Math.floor(left/60) + ':' + String(left%60).padStart(2,'0');
+      if (left === 240) $('cb-clocksub').textContent = 'still here? the bird respects that. slightly.';
+      if (left === 120) $('cb-clocksub').textContent = 'two minutes. imagine the ideas you could be submitting.';
+      if (left === 30)  $('cb-clocksub').textContent = 'fine. FINE. almost done.';
+      if (left <= 0) hide();
+    }, 1000);
+  }
+
+  function hide() {
+    open = false;
+    clearInterval(timer);
+    $('cb-shakedown').classList.remove('cb-on');
+    $('cb-clock').textContent = '5:00';
+    $('cb-clocksub').textContent = 'time until we pretend to forgive you';
+    document.activeElement && document.activeElement.blur();
+  }
+
+  function strip() {
+    var el = $('cb-strip');
+    var gap = Math.max(0, CFG.threshold_cents - CFG.pot_cents);
+    el.textContent = STRIPS[Math.floor(Math.random()*STRIPS.length)]
+      .replace('{pot}', money(CFG.pot_cents)).replace('{thr}', money(CFG.threshold_cents))
+      .replace('{gap}', money(gap));
+    el.classList.add('cb-on');
+    setTimeout(function () { el.classList.remove('cb-on'); }, 4200);
+  }
+
+  window.addEventListener('crappy-bird:death', function (e) {
+    if (open) return;
+    var score = (e.detail && e.detail.score) | 0;
+    if (Math.random() < CFG.block_probability) {
+      setTimeout(function () { if (!open) show(score); }, 900);  // let them read their own death first
+    } else {
+      strip();
+    }
+  });
+
+  $('cb-amount').addEventListener('input', updateMath);
+  // keep game keys (space) from leaking through while the note is up
+  $('cb-shakedown').addEventListener('keydown', function (e) { e.stopPropagation(); });
+
+  $('cb-paybtn').addEventListener('click', function () {
+    var v = parseFloat($('cb-amount').value);
+    if (isNaN(v) || v < 1) { updateMath(); return; }
+    $('cb-paybtn').textContent = 'summoning the money tube…';
+    // plain navigation, zero fetch: the game document's CSP allows no network at all
+    location.href = '/checkout?amount_cents=' + Math.round(v * 100);
+  });
+  $('cb-waitout').addEventListener('click', function () { hide(); strip(); });
+
+  if (new URLSearchParams(location.search).get('cancelled')) {
+    var s = $('cb-strip');
+    s.textContent = 'payment cancelled. the bird saw that. the bird remembers.';
+    s.classList.add('cb-on');
+    setTimeout(function () { s.classList.remove('cb-on'); }, 4200);
+    history.replaceState(null, '', '/play');
+  }
+})();
+</script>

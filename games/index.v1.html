@@ -457,8 +457,11 @@ function die(cause) {
   if (state !== S.PLAY) return;
   state = S.DEAD;
   // tell the landlord (the hosting shell) that the tenant has died.
-  // no-op when the file is opened directly -- the downloaded game never begs.
+  // the CustomEvent is for same-document listeners (the injected overlay);
+  // the postMessage is for iframe embedders (the test harness). standalone,
+  // nobody is listening and nothing happens -- the downloaded game never begs.
   try {
+    window.dispatchEvent(new CustomEvent('crappy-bird:death', { detail: { score: score, cause: cause } }));
     if (window.parent !== window) {
       window.parent.postMessage({ type: 'crappy-bird:death', score: score, cause: cause }, '*');
     }
@@ -1223,6 +1226,7 @@ ad.onclick = () => {
 
 // handshake with the hosting shell, if any. harmless when standalone.
 try {
+  window.dispatchEvent(new CustomEvent('crappy-bird:ready'));
   if (window.parent !== window) {
     window.parent.postMessage({ type: 'crappy-bird:ready' }, '*');
   }

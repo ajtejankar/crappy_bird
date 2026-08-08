@@ -17,11 +17,14 @@ A release that breaks any of these does not ship, and the money is wasted.
    `localStorage` are fine. The hosting shell serves the game under a CSP that
    blocks all of this anyway — code that violates it just breaks silently.
 
-4. **The death hook stays.** When the player dies, the game MUST post
-   `{ type: 'crappy-bird:death', score: <number>, cause: <string> }` to
-   `window.parent` (guarded so it no-ops standalone). On load it MUST post
-   `{ type: 'crappy-bird:ready' }`. This is how the landlord collects rent.
-   Remove it and the entire business model dies with the bird.
+4. **The death hook stays.** When the player dies, the game MUST do both of:
+   - `window.dispatchEvent(new CustomEvent('crappy-bird:death', { detail: { score, cause } }))`
+     — for the same-document overlay the server injects when hosting the game;
+   - post `{ type: 'crappy-bird:death', score, cause }` to `window.parent`
+     when embedded (guarded so it no-ops standalone) — for the test harness.
+   On load it MUST likewise dispatch `CustomEvent('crappy-bird:ready')` and post
+   `{ type: 'crappy-bird:ready' }` to the parent. This is how the landlord
+   collects rent. Remove it and the entire business model dies with the bird.
 
 5. **Standalone dignity.** Opened directly as a file, the game is just a game:
    no payment UI, no begging, nothing that requires the shell. The download is
