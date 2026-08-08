@@ -1,0 +1,168 @@
+name: dev-cycle
+
+# The entire game development lifecycle, employee-free.
+# Fired by the web app (repository_dispatch) when the war chest crosses the
+# threshold, or by hand (workflow_dispatch) for testing.
+#
+# SECURITY NOTE: idea text and everything derived from it (release summaries,
+# changelog entries) is untrusted, paid-for user content. It must NEVER be
+# interpolated into shell via ${{ }} — only via env vars, which the shell
+# treats as data. Keep it that way.
+
+on:
+  repository_dispatch:
+    types: [fund-goal-reached]
+  workflow_dispatch: {}
+
+concurrency:
+  group: dev-cycle          # one developer. it does not pair-program with itself.
+
+permissions:
+  contents: write
+
+jobs:
+  develop:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      APP_URL: ${{ secrets.APP_URL }}
+      AGENT_TOKEN: ${{ secrets.AGENT_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: fetch the idea pile
+        id: ideas
+        run: |
+          curl -fsS -H "Authorization: Bearer $AGENT_TOKEN" \
+            "$APP_URL/api/agent/ideas" -o agent/ideas.json
+          count=$(jq length agent/ideas.json)
+          echo "count=$count" >> "$GITHUB_OUTPUT"
+          echo "fetched $count pending idea(s)"
+
+      - name: report empty pile and stop
+        if: steps.ideas.outputs.count == '0'
+        run: |
+          jq -n '{status:"failed", spend_cents:0, summary:"woke up to an empty idea pile. going back to sleep."}' \
+            | curl -fsS -X POST "$APP_URL/api/agent/complete" \
+                -H "Authorization: Bearer $AGENT_TOKEN" -H "content-type: application/json" -d @-
+
+      - name: install browsers for the verifier
+        if: steps.ideas.outputs.count != '0'
+        run: uv run agent/verify_game.py install
+
+      - name: install claude code
+        if: steps.ideas.outputs.count != '0'
+        run: npm install -g @anthropic-ai/claude-code
+
+      - name: THE DEVELOPER WORKS
+        id: agent
+        if: steps.ideas.outputs.count != '0'
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          set +e
+          claude -p "$(cat agent/AGENT_PROMPT.md)" \
+            --model claude-opus-5 \
+            --dangerously-skip-permissions \
+            --output-format json > agent/claude_output.json 2> agent/claude_stderr.log
+          echo "claude exit code: $?"
+          cost=$(jq -r '.total_cost_usd // empty' agent/claude_output.json 2>/dev/null)
+          [ -z "$cost" ] && cost=5
+          cents=$(printf '%.0f' "$(echo "$cost * 100" | bc -l)")
+          echo "spend_cents=$cents" >> "$GITHUB_OUTPUT"
+          echo "developer session cost: \$$cost"
+          tail -c 2000 agent/claude_stderr.log || true
+
+      - name: the gate (verify, or it does not ship)
+        id: gate
+        if: steps.ideas.outputs.count != '0'
+        run: |
+          set +e
+          out() { printf '%s=%s\n' "$1" "$(printf '%s' "$2" | tr '\n\r' '  ' | head -c 400)" >> "$GITHUB_OUTPUT"; }
+          fail() { out verdict failed; out reason "$1"; echo "GATE: $1"; exit 0; }
+
+          [ -f agent/release.json ] || fail "developer left no release.json"
+          jq empty agent/release.json 2>/dev/null || fail "release.json is not valid JSON"
+          version=$(jq -r '.version // empty' agent/release.json)
+          idea_id=$(jq -r '.idea_id // empty' agent/release.json)
+          summary=$(jq -r '.summary // "no summary"' agent/release.json)
+          out summary "$summary"
+          [ -n "$version" ] || fail "developer surrendered: $summary"
+
+          old=$(git show HEAD:games/latest.json | jq -r .version)
+          [ "$version" -eq "$((old + 1))" ] 2>/dev/null || fail "version '$version' is not $((old + 1))"
+          [ "$(jq -r .version games/latest.json)" -eq "$version" ] || fail "latest.json not bumped to $version"
+          [ -f "games/index.v${version}.html" ] || fail "games/index.v${version}.html missing"
+          case "$idea_id" in (*[!0-9]*|'') fail "release.json idea_id is not a number";; esac
+          out version "$version"
+          out idea_id "$idea_id"
+
+          # blast-radius check: nothing outside games/ (+ gitignored agent/ scratch) may change
+          illegal=$(git status --porcelain | awk '{print $2}' | grep -vE '^(games/|agent/)' || true)
+          [ -z "$illegal" ] || fail "developer touched forbidden files: $illegal"
+          old_changed=$(git diff --name-only -- games/ | grep -vE "index.v${version}.html|latest.json|CHANGELOG.md" || true)
+          [ -z "$old_changed" ] || fail "developer edited history: $old_changed"
+
+          uv run agent/verify_game.py verify "games/index.v${version}.html" || fail "verification gate rejected the build"
+          out verdict success
+
+      - name: publish evidence
+        if: steps.ideas.outputs.count != '0' && always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dev-cycle-evidence
+          path: |
+            agent/screenshots/
+            agent/claude_stderr.log
+          if-no-files-found: ignore
+
+      - name: ship it
+        if: steps.ideas.outputs.count != '0' && steps.gate.outputs.verdict == 'success'
+        env:
+          VERSION: ${{ steps.gate.outputs.version }}
+          SUMMARY: ${{ steps.gate.outputs.summary }}
+          IDEA_ID: ${{ steps.gate.outputs.idea_id }}
+          SPEND: ${{ steps.agent.outputs.spend_cents }}
+        run: |
+          git config user.name "the developer"
+          git config user.email "bird@users.noreply.github.com"
+          git add games/
+          SPEND=${SPEND:-0}
+          cost=$(printf '%d.%02d' $((SPEND / 100)) $((SPEND % 100)))
+          git commit -m "v${VERSION}: ${SUMMARY}" \
+                     -m "idea #${IDEA_ID}, chosen and implemented autonomously. cost: \$${cost}"
+          git push
+
+      - name: report back to the mothership
+        if: steps.ideas.outputs.count != '0' && always()
+        env:
+          VERDICT: ${{ steps.gate.outputs.verdict }}
+          REASON: ${{ steps.gate.outputs.reason }}
+          SUMMARY: ${{ steps.gate.outputs.summary }}
+          VERSION: ${{ steps.gate.outputs.version }}
+          IDEA_ID: ${{ steps.gate.outputs.idea_id }}
+          SPEND: ${{ steps.agent.outputs.spend_cents }}
+        run: |
+          verdict="${VERDICT:-failed}"
+          summary="$SUMMARY"
+          if [ "$verdict" = "failed" ]; then
+            summary="${REASON:-the developer failed in a way it could not even report}"
+          fi
+          jq -n \
+            --arg status "$verdict" \
+            --arg version "$VERSION" \
+            --arg idea_id "$IDEA_ID" \
+            --arg spend "${SPEND:-0}" \
+            --arg summary "$summary" \
+            '{status:$status, spend_cents:(($spend|tonumber?) // 0), summary:$summary}
+             + (if $status == "success"
+                then {version:(($version|tonumber?) // null), idea_id:(($idea_id|tonumber?) // null)}
+                else {} end)' \
+            | curl -fsS -X POST "$APP_URL/api/agent/complete" \
+                -H "Authorization: Bearer $AGENT_TOKEN" -H "content-type: application/json" -d @-

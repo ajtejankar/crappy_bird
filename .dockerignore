@@ -1,0 +1,10 @@
+.git/
+.venv/
+data/
+agent/
+.github/
+__pycache__/
+.env
+.env.*
+*.md
+index.html

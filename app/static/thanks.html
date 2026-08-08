@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>receipt of extortion — crappy bird</title>
+<style>
+  * { box-sizing:border-box; }
+  html,body { margin:0; min-height:100%; background:#0b0d12;
+    background-image:repeating-linear-gradient(0deg, rgba(255,255,255,.022) 0 2px, transparent 2px 4px);
+    color:#fffbe6; font-family:"Comic Sans MS","Chalkboard SE","Comic Neue",cursive,system-ui; }
+  #wrap { max-width:560px; margin:0 auto; padding:26px 14px 60px; }
+
+  #receipt { background:#fffbe6; color:#101010; border:4px solid #000;
+    box-shadow:10px 10px 0 rgba(0,0,0,.55); transform:rotate(.4deg);
+    padding:22px 22px 18px; position:relative; }
+  #receipt::before, #receipt::after { /* torn edges */
+    content:""; position:absolute; left:0; right:0; height:10px;
+    background:repeating-linear-gradient(90deg, #fffbe6 0 12px, transparent 12px 20px);
+  }
+  #receipt::before { top:-8px; } #receipt::after { bottom:-8px; transform:scaleY(-1); }
+  h1 { margin:0; font-size:20px; text-align:center; letter-spacing:1px; }
+  .sub { text-align:center; font-size:11px; color:#666; margin:2px 0 14px; }
+  .row { display:flex; justify-content:space-between; font-size:13px; padding:3px 0;
+    border-bottom:1px dashed #bbb; }
+  .row b { font-variant-numeric:tabular-nums; }
+  #paid { text-align:center; margin:14px 0 4px; }
+  #paid span { display:inline-block; border:3px solid #c0392b; color:#c0392b; font-size:18px;
+    letter-spacing:3px; padding:3px 14px; transform:rotate(-4deg); font-weight:bold; }
+
+  #ideabox { margin-top:22px; background:#151923; border:3px solid #000;
+    box-shadow:6px 6px 0 rgba(0,0,0,.45); padding:14px 16px; }
+  #ideabox h2 { margin:0 0 4px; font-size:15px; color:#ffe14d; }
+  #ideabox .hint { font-size:11px; opacity:.65; margin-bottom:10px; line-height:1.5; }
+  textarea { width:100%; height:92px; font-family:inherit; font-size:13px;
+    background:#fffbe6; color:#101010; border:3px solid #000; padding:8px; resize:vertical; }
+  #counter { font-size:10.5px; opacity:.6; text-align:right; margin:2px 0 8px; }
+  button { font-family:inherit; font-size:14px; font-weight:bold; cursor:pointer;
+    background:#ffe14d; color:#101010; border:3px solid #000;
+    box-shadow:4px 4px 0 rgba(0,0,0,.45); padding:8px 14px; }
+  button:active { transform:translate(2px,2px); box-shadow:2px 2px 0 rgba(0,0,0,.45); }
+  button:disabled { opacity:.5; cursor:not-allowed; }
+  #left { display:inline-block; margin-left:10px; font-size:12px; opacity:.8; }
+  #submitted { margin-top:14px; font-size:12px; }
+  #submitted div { border-left:3px solid #ff00ff; padding:4px 8px; margin:6px 0;
+    background:rgba(255,255,255,.04); }
+  #status { min-height:18px; font-size:12px; margin-top:8px; color:#ffe14d; }
+  #back { display:block; text-align:center; margin-top:22px; font-size:13px; color:#ffe14d; }
+  .prompts { font-size:10.5px; opacity:.5; margin-top:10px; line-height:1.6; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div id="receipt">
+    <h1>RECEIPT OF EXTORTION</h1>
+    <div class="sub">crappy bird industries · dept. of tribute · no refunds, only consequences</div>
+    <div class="row"><span>item</span><b>1× fake timeout, waived</b></div>
+    <div class="row"><span>amount surrendered</span><b id="r-amount">…</b></div>
+    <div class="row"><span>feature ideas purchased</span><b id="r-credits">…</b></div>
+    <div class="row"><span>your generosity, assessed</span><b id="r-verdict">…</b></div>
+    <div id="paid"><span>PAID</span></div>
+  </div>
+
+  <div id="ideabox">
+    <h2>FEED THE MACHINE</h2>
+    <div class="hint">
+      Each idea (≤500 chars) goes into the pile. When the war chest hits its target, an
+      unsupervised AI reads <i>everything</i> in the pile, picks the <b>zaniest single idea</b>,
+      and ships it as the next version of the game. It will not email you. It will not
+      apologize. Weird beats sensible. Specific beats vague. Funny beats both.
+    </div>
+    <textarea id="idea" maxlength="500" placeholder="e.g. the bird should have a tiny lawyer that objects to every pipe"></textarea>
+    <div id="counter">0 / 500</div>
+    <button id="submit">SUBMIT IDEA</button>
+    <span id="left"></span>
+    <div id="status"></div>
+    <div id="submitted"></div>
+    <div class="prompts">
+      struggling? past civilizations have suggested: weather with opinions · the pipes unionize
+      properly this time · a second, worse bird · the game apologizes after every death ·
+      everything is slightly wet
+    </div>
+  </div>
+
+  <a id="back" href="/">← return to the suffering</a>
+</div>
+
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+const sessionId = new URLSearchParams(location.search).get('session_id');
+
+const VERDICTS = [
+  [100, 'the legal minimum. noted.'],
+  [200, 'two dollars. a patron of the arts.'],
+  [500, 'genuinely unwell. thank you.'],
+  [1000, 'you ARE the war chest.'],
+  [2000, 'the bird is being told about you right now.'],
+];
+
+let creditsLeft = 0;
+
+async function load(attempt = 0) {
+  if (!sessionId) { $('status').textContent = 'no payment session found. how did you get here?'; return; }
+  try {
+    const r = await fetch('/api/claim?session_id=' + encodeURIComponent(sessionId));
+    if (!r.ok) throw new Error((await r.json()).detail || 'unknown payment');
+    const j = await r.json();
+    $('r-amount').textContent = '$' + (j.amount_cents/100).toFixed(2);
+    $('r-credits').textContent = j.credits + (j.credits === 1 ? ' idea' : ' ideas');
+    let v = 'acceptable';
+    for (const [amt, text] of VERDICTS) if (j.amount_cents >= amt) v = text;
+    $('r-verdict').textContent = v;
+    creditsLeft = j.credits_left;
+    renderLeft();
+  } catch (err) {
+    if (attempt < 5) {  // webhook race: stripe redirected before the webhook landed
+      $('status').textContent = 'verifying with the money tube… (' + (attempt+1) + ')';
+      setTimeout(() => load(attempt + 1), 1500);
+    } else {
+      $('status').textContent = String(err.message || err);
+    }
+  }
+}
+
+function renderLeft() {
+  $('left').textContent = creditsLeft > 0
+    ? creditsLeft + (creditsLeft === 1 ? ' idea left' : ' ideas left')
+    : 'all ideas spent. the machine thanks you.';
+  $('submit').disabled = creditsLeft <= 0;
+}
+
+$('idea').addEventListener('input', () => {
+  $('counter').textContent = $('idea').value.length + ' / 500';
+});
+
+$('submit').addEventListener('click', async () => {
+  const text = $('idea').value.trim();
+  if (!text) { $('status').textContent = 'an empty idea. bold, but no.'; return; }
+  $('submit').disabled = true;
+  try {
+    const r = await fetch('/api/ideas', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ session_id: sessionId, text }),
+    });
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.detail || 'the pile rejected it');
+    creditsLeft = j.credits_left;
+    const div = document.createElement('div');
+    div.textContent = '☑ filed: ' + text;
+    $('submitted').appendChild(div);
+    $('idea').value = '';
+    $('counter').textContent = '0 / 500';
+    $('status').textContent = 'idea accepted. it is in the pile now. there is no getting it back.';
+    renderLeft();
+  } catch (err) {
+    $('status').textContent = String(err.message || err);
+    renderLeft();
+  }
+});
+
+load();
+</script>
+</body>
+</html>

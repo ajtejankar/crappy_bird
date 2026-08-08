@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>development log — crappy bird</title>
+<style>
+  * { box-sizing:border-box; }
+  html,body { margin:0; min-height:100%; background:#0d0d0f; color:#8bffb0;
+    font-family:ui-monospace,Menlo,Consolas,monospace; }
+  #wrap { max-width:760px; margin:0 auto; padding:26px 16px 60px; }
+  h1 { font-size:16px; color:#ffe14d; font-weight:normal; }
+  h1::before { content:"$ "; opacity:.5; }
+  pre { white-space:pre-wrap; word-wrap:break-word; font-size:12.5px; line-height:1.65;
+    background:#0a0a0c; border:1px solid #223; padding:16px; }
+  .cursor { display:inline-block; width:8px; height:14px; background:#8bffb0;
+    animation:blink 1s steps(1) infinite; vertical-align:text-bottom; }
+  @keyframes blink { 50% { opacity:0; } }
+  a { color:#ffe14d; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <h1>cat games/CHANGELOG.md</h1>
+  <pre id="log">loading institutional memory…</pre>
+  <span class="cursor"></span>
+  <p><a href="/">← back to the game</a></p>
+</div>
+<script>
+fetch('/api/changelog').then(r => r.text()).then(t => {
+  document.getElementById('log').textContent = t;
+});
+</script>
+</body>
+</html>

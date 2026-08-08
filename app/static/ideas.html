@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>the pile — crappy bird</title>
+<style>
+  * { box-sizing:border-box; }
+  html,body { margin:0; min-height:100%; background:#0b0d12;
+    background-image:repeating-linear-gradient(0deg, rgba(255,255,255,.022) 0 2px, transparent 2px 4px);
+    color:#fffbe6; font-family:"Comic Sans MS","Chalkboard SE","Comic Neue",cursive,system-ui; }
+  #wrap { max-width:640px; margin:0 auto; padding:26px 14px 60px; }
+  h1 { text-align:center; font-size:26px; margin:0; color:#ffe14d; }
+  .sub { text-align:center; font-size:12px; opacity:.6; margin:4px 0 20px; }
+  .idea { border:3px solid #000; background:#151923; box-shadow:5px 5px 0 rgba(0,0,0,.45);
+    padding:10px 14px; margin:10px 0; position:relative; }
+  .idea .text { font-size:13.5px; line-height:1.5; word-wrap:break-word; }
+  .idea .meta { font-size:10.5px; opacity:.5; margin-top:6px; }
+  .badge { position:absolute; top:-10px; right:10px; font-size:10px; letter-spacing:1px;
+    padding:2px 8px; border:2px solid #000; transform:rotate(2deg); }
+  .pending .badge { background:#ffe14d; color:#101010; }
+  .implemented .badge { background:#4be3a1; color:#101010; }
+  .implemented { opacity:.75; }
+  #empty { text-align:center; opacity:.6; font-size:13px; margin:40px 0; line-height:1.8; }
+  a { color:#ffe14d; }
+  #back { display:block; text-align:center; margin-top:24px; font-size:13px; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <h1>THE PILE</h1>
+  <div class="sub">every idea a paying customer has fed to the machine. the machine reads all of them.
+    it picks the zaniest. there is no appeals process.</div>
+  <div id="list"></div>
+  <div id="empty" style="display:none">
+    the pile is empty.<br>
+    somewhere, an AI developer sleeps with nothing to dream about.<br>
+    <a href="/">go die in the game and fix this</a>
+  </div>
+  <a id="back" href="/">← back to the game</a>
+</div>
+<script>
+"use strict";
+const FLAVOR = ['festering nicely', 'ripening', 'under consideration by no one', 'in the queue, allegedly',
+                'marinating', 'gaining sentience', 'awaiting funding', 'very much in the pile'];
+(async () => {
+  const r = await fetch('/api/ideas/public');
+  const ideas = await r.json();
+  const list = document.getElementById('list');
+  if (!ideas.length) { document.getElementById('empty').style.display = 'block'; return; }
+  for (const idea of ideas) {
+    const div = document.createElement('div');
+    div.className = 'idea ' + idea.status;
+    const badge = document.createElement('span');
+    badge.className = 'badge';
+    badge.textContent = idea.status === 'implemented' ? 'SHIPPED in v' + idea.version : 'PENDING';
+    const text = document.createElement('div');
+    text.className = 'text';
+    text.textContent = '“' + idea.text + '”';
+    const meta = document.createElement('div');
+    meta.className = 'meta';
+    meta.textContent = idea.status === 'implemented'
+      ? 'this one made it. the game is worse now. congratulations.'
+      : 'status: ' + FLAVOR[idea.id % FLAVOR.length];
+    div.append(badge, text, meta);
+    list.appendChild(div);
+  }
+})();
+</script>
+</body>
+</html>

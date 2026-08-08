@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>crappy bird: extortion edition</title>
+<style>
+  :root { --crap:#ff00ff; --gold:#ffe14d; --paper:#fffbe6; --ink:#101010; }
+  * { box-sizing:border-box; }
+  html,body { margin:0; min-height:100%; background:#0b0d12;
+    background-image:repeating-linear-gradient(0deg, rgba(255,255,255,.022) 0 2px, transparent 2px 4px);
+    color:var(--paper); font-family:"Comic Sans MS","Chalkboard SE","Comic Neue",cursive,system-ui; }
+  a { color:var(--gold); }
+
+  #wrap { max-width:960px; margin:0 auto; padding:14px 12px 60px; }
+
+  /* ---------- header ---------- */
+  header { text-align:center; margin:6px 0 14px; }
+  #title { font-size:clamp(26px,6vw,44px); letter-spacing:1px; margin:0; }
+  #title span { display:inline-block; }
+  #title .a { color:#fff; } #title .b { color:var(--gold); }
+  #edition {
+    display:inline-block; margin-top:2px; padding:2px 10px;
+    background:var(--crap); color:#fff; font-size:12px; letter-spacing:2px;
+    border:2px solid #000; transform:rotate(-2deg);
+    box-shadow:3px 3px 0 rgba(0,0,0,.5);
+  }
+  #tagline { font-size:12px; opacity:.6; margin-top:8px; }
+
+  /* ---------- war chest ---------- */
+  #chest {
+    border:3px solid #000; background:#151923; box-shadow:6px 6px 0 rgba(0,0,0,.45);
+    padding:10px 14px; margin:0 auto 14px; max-width:560px;
+  }
+  #chest h2 { margin:0 0 6px; font-size:13px; letter-spacing:1.5px; color:var(--gold); }
+  #chest h2 small { color:var(--paper); opacity:.55; letter-spacing:0; font-weight:normal; }
+  #barbox { border:2px solid #000; background:#0a0c10; height:26px; position:relative; }
+  #bar { height:100%; width:0%; background:linear-gradient(90deg,#2f7d32,#7ac74f); transition:width .8s; }
+  #bar.hot { background:linear-gradient(90deg,#c0392b,var(--crap)); }
+  #barlabel { position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+    font-size:12px; text-shadow:1px 1px 0 #000; }
+  #devstate { font-size:11.5px; margin-top:6px; opacity:.85; min-height:15px; }
+  #devstate .dot { display:inline-block; width:8px; height:8px; border-radius:50%;
+    background:#555; margin-right:6px; vertical-align:baseline; }
+  #devstate.awake .dot { background:#ff3b3b; animation:blink 1s infinite; }
+  @keyframes blink { 50% { opacity:.2; } }
+  #chestmeta { display:flex; gap:14px; flex-wrap:wrap; font-size:11px; opacity:.6; margin-top:6px; }
+
+  /* ---------- cabinet ---------- */
+  #cabinet { position:relative; margin:0 auto; width:min(94vw,420px); }
+  #gameframe { display:block; width:100%; aspect-ratio:400/720; border:3px solid #000;
+    background:#1d6f7a; box-shadow:8px 8px 0 rgba(0,0,0,.5); }
+
+  /* ---------- extortion overlay ---------- */
+  #shakedown {
+    position:fixed; inset:0; z-index:50; display:none;
+    background:rgba(4,4,10,.82); backdrop-filter:blur(2px);
+    align-items:center; justify-content:center; padding:14px;
+  }
+  #shakedown.on { display:flex; }
+  #ransom {
+    width:min(94vw,470px); background:var(--paper); color:var(--ink);
+    border:4px solid #000; box-shadow:10px 10px 0 rgba(0,0,0,.6);
+    transform:rotate(-.6deg); padding:18px 20px 16px; position:relative;
+    animation:slam .28s cubic-bezier(.2,2.6,.4,1);
+  }
+  @keyframes slam { from { transform:scale(1.6) rotate(-6deg); opacity:0; } }
+  #ransom h1 { margin:0 0 2px; font-size:24px; color:#c0392b; letter-spacing:.5px; text-align:center; }
+  #ransom h1 + p { text-align:center; margin:0 0 10px; font-size:12px; color:#333; }
+  #stamp {
+    position:absolute; top:-14px; right:-12px; padding:4px 10px;
+    background:var(--crap); color:#fff; border:2px solid #000; font-size:11px;
+    letter-spacing:1px; transform:rotate(8deg); box-shadow:3px 3px 0 rgba(0,0,0,.4);
+  }
+  #verdict { background:#111; color:var(--gold); border:2px solid #000;
+    font-size:12px; padding:7px 10px; margin:10px 0; text-align:center; }
+  #clock { font-size:38px; text-align:center; letter-spacing:3px; margin:6px 0 0;
+    font-variant-numeric:tabular-nums; }
+  #clocksub { text-align:center; font-size:10.5px; color:#777; margin:0 0 12px; }
+
+  #payrow { display:flex; gap:8px; align-items:stretch; margin:8px 0 4px; }
+  #payrow .dollar { display:flex; align-items:center; font-size:22px; padding-left:2px; }
+  #amount { width:84px; font-family:inherit; font-size:22px; text-align:center;
+    border:3px solid #000; background:#fff; padding:4px; }
+  #paybtn { flex:1; font-family:inherit; font-size:16px; cursor:pointer;
+    background:var(--gold); border:3px solid #000; box-shadow:4px 4px 0 rgba(0,0,0,.45);
+    padding:8px 6px; font-weight:bold; }
+  #paybtn:active { transform:translate(2px,2px); box-shadow:2px 2px 0 rgba(0,0,0,.45); }
+  #paymath { text-align:center; font-size:11.5px; margin:6px 0 2px; color:#333; min-height:15px; }
+  #fineprint { font-size:9.5px; color:#888; margin-top:10px; line-height:1.5; }
+  #waitout { display:block; margin:10px auto 0; background:none; border:none;
+    font-family:inherit; font-size:10.5px; color:#999; text-decoration:underline; cursor:pointer; }
+
+  /* ---------- ticker ---------- */
+  #ticker { position:fixed; left:0; right:0; bottom:0; background:#000; color:var(--gold);
+    border-top:2px solid var(--gold); font-size:12px; padding:5px 0; overflow:hidden;
+    white-space:nowrap; z-index:40; }
+  #ticker span { display:inline-block; padding-left:100vw; animation:tick 28s linear infinite; }
+  @keyframes tick { to { transform:translateX(-100%); } }
+
+  /* ---------- footer ---------- */
+  footer { text-align:center; font-size:11.5px; opacity:.75; margin-top:16px; line-height:2; }
+  footer .sep { opacity:.4; padding:0 6px; }
+  #toast { position:fixed; left:50%; top:16px; transform:translateX(-50%); z-index:60;
+    background:var(--paper); color:var(--ink); border:2px solid #000; padding:6px 12px;
+    font-size:12px; box-shadow:4px 4px 0 rgba(0,0,0,.5); display:none; }
+  #devbadge { position:fixed; top:8px; left:8px; background:#c0392b; color:#fff;
+    font-size:10px; padding:2px 8px; border:2px solid #000; display:none; z-index:60;
+    transform:rotate(-3deg); }
+</style>
+</head>
+<body>
+<div id="devbadge">DEV MODE — money is fake, regret is real</div>
+<div id="toast"></div>
+
+<div id="wrap">
+  <header>
+    <h1 id="title"><span class="a">CRAPPY&nbsp;</span><span class="b">BIRD</span></h1>
+    <div id="edition">EXTORTION EDITION</div>
+    <div id="tagline">a game that funds its own decline. every dollar makes it worse, on purpose, forever.</div>
+  </header>
+
+  <div id="chest">
+    <h2>THE WAR CHEST <small id="chestver"></small></h2>
+    <div id="barbox">
+      <div id="bar"></div>
+      <div id="barlabel">$0.00 / $10.00</div>
+    </div>
+    <div id="devstate"><span class="dot"></span><span id="devtext">consulting the ledger…</span></div>
+    <div id="chestmeta">
+      <span id="m-ideas">ideas in the pile: …</span>
+      <span id="m-shipped">features shipped by AI: …</span>
+      <span id="m-burned">money incinerated: …</span>
+    </div>
+  </div>
+
+  <div id="cabinet">
+    <iframe id="gameframe" src="/play/latest" title="crappy bird"></iframe>
+  </div>
+
+  <footer>
+    <a href="/download">download the game</a> <span class="sep">·</span>
+    <a href="/ideas">the idea pile</a> <span class="sep">·</span>
+    <a href="/changelog">development log</a>
+    <br>
+    the download never begs. the begging is a hosting exclusive.
+    <br>
+    100% of profits are fed to an unsupervised AI that makes this game worse. this is the business model.
+  </footer>
+</div>
+
+<!-- ============================ THE SHAKEDOWN ============================ -->
+<div id="shakedown">
+  <div id="ransom">
+    <div id="stamp">TOTALLY LEGAL</div>
+    <h1>YOUR BIRD HAS BEEN IMPOUNDED</h1>
+    <p>pursuant to section 4(b) of terms nobody wrote</p>
+    <div id="verdict"></div>
+    <div id="clock">5:00</div>
+    <p id="clocksub">time until we pretend to forgive you</p>
+
+    <div id="payrow">
+      <span class="dollar">$</span>
+      <input id="amount" type="number" min="1" max="500" step="1" value="1" inputmode="numeric">
+      <button id="paybtn">PAY THE BIRD</button>
+    </div>
+    <div id="paymath"></div>
+
+    <div id="fineprint">
+      pay-what-you-want, $1 minimum. every whole dollar buys one (1) feature idea, injected
+      directly into the brain of the unsupervised AI that develops this game. at $10 in the
+      war chest, it wakes up and ships the zaniest idea in the pile. nothing forces you to pay.
+      the timer is fake. refreshing works. we are relying entirely on your amusement,
+      which is more reliable than your fear.
+    </div>
+    <button id="waitout">no. i will wait out the fake timer on principle.</button>
+  </div>
+</div>
+
+<div id="ticker"><span id="tickertext"></span></div>
+
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+
+/* ------------------------------------------------------------- state */
+let STATE = { block_probability: 0.35, threshold_cents: 1000, pot_cents: 0,
+              dev_mode: false, version: 1, developing: false };
+
+const DEVSTATES = {
+  asleep:  ['the developer is asleep. it dreams in JavaScript.',
+            'the developer sleeps. the pot is not yet worth waking up for.',
+            'developer status: unconscious (cost-saving measure)'],
+  stirring:['the developer stirs… it can smell the money.',
+            'the developer is half awake and already has bad ideas.'],
+  awake:   ['THE DEVELOPER IS AWAKE AND WRITING CODE. NOBODY IS SUPERVISING IT.',
+            'compiling… the bird\'s fate is being decided by an enthusiastic machine.'],
+};
+
+async function refreshState() {
+  try {
+    const r = await fetch('/api/state');
+    STATE = await r.json();
+  } catch (e) { return; }
+  const pot = STATE.pot_cents, thr = STATE.threshold_cents;
+  const pct = Math.max(0, Math.min(100, pot / thr * 100));
+  $('bar').style.width = pct + '%';
+  $('bar').classList.toggle('hot', pct >= 80 || STATE.developing);
+  $('barlabel').textContent =
+    '$' + (pot/100).toFixed(2) + ' / $' + (thr/100).toFixed(2) +
+    (pot >= thr ? '  — FUNDED' : '');
+  $('chestver').textContent = '— funding v' + (STATE.version + 1) + ' of the game';
+  $('m-ideas').textContent = 'ideas in the pile: ' + STATE.pending_ideas;
+  $('m-shipped').textContent = 'features shipped by AI: ' + STATE.implemented_ideas;
+  $('m-burned').textContent = 'money incinerated: $' + (STATE.spent_cents/100).toFixed(2);
+  const ds = $('devstate');
+  ds.classList.toggle('awake', STATE.developing);
+  const pool = STATE.developing ? DEVSTATES.awake : (pct >= 70 ? DEVSTATES.stirring : DEVSTATES.asleep);
+  $('devtext').textContent = pool[Math.floor(Date.now()/8000) % pool.length];
+  $('devbadge').style.display = STATE.dev_mode ? 'block' : 'none';
+}
+refreshState();
+setInterval(refreshState, 8000);
+
+/* ------------------------------------------------------------- ticker */
+const HEADLINES = [
+  'BREAKING: local bird still bad at game it stars in',
+  'AI developer reportedly "very excited" about your worst ideas',
+  'war chest audit finds chest, finds war, finds no accountability',
+  'economists baffled by game that monetizes its own decay',
+  'v' + '∞' + ' roadmap leaked: it\'s just a drawing of a bird on fire',
+  'players report timer is "fake", management reports players are "correct"',
+  'this ticker is load-bearing. do not close the tab.',
+  'the bird has retained counsel. counsel is also a bird.',
+  'REMINDER: every dollar above $1 is a whole extra idea. the machine reads them all.',
+];
+$('tickertext').textContent = ' ' + HEADLINES.join('  ★  ') + '  ★  ';
+
+/* ------------------------------------------------------- death handling */
+const VERDICTS = [
+  s => 'cause of death: incompetence. score: ' + s + '. the pipe is pressing charges.',
+  s => 'you scored ' + s + '. the bird deserved a better pilot. pay up.',
+  s => 'score: ' + s + '. our actuary says that\'s a you-problem.',
+  s => 'the bird died ' + (s === 0 ? 'immediately. IMMEDIATELY.' : 'with a score of ' + s + '.') + ' tribute is customary.',
+  s => 'incident report #' + Math.floor(Math.random()*9000+1000) + ': bird down, score ' + s + ', wallet located.',
+];
+
+const PAYLABELS = [
+  [1,   'PAY $1 — the legal minimum of respect'],
+  [2,   'PAY $2 — two ideas. a conspiracy.'],
+  [3,   'PAY $3 — three ideas: a manifesto'],
+  [5,   'PAY $5 — five ideas?? seek power responsibly'],
+  [10,  'PAY $10 — you are single-handedly funding a release'],
+  [20,  'PAY $20 — the bird will name a pipe after you*'],
+  [50,  'PAY $50 — this is a cry for help and we accept it'],
+  [100, 'PAY $100 — the bird is uncomfortable but grateful'],
+];
+
+let timerHandle = null;
+
+function showShakedown(score) {
+  $('verdict').textContent = VERDICTS[Math.floor(Math.random()*VERDICTS.length)](score);
+  $('shakedown').classList.add('on');
+  updatePayMath();
+  let left = 300;
+  const tick = () => {
+    left--;
+    const m = Math.floor(left/60), s = String(left%60).padStart(2,'0');
+    $('clock').textContent = m + ':' + s;
+    if (left === 240) $('clocksub').textContent = 'still here? the bird respects that. slightly.';
+    if (left === 120) $('clocksub').textContent = 'two minutes. imagine the ideas you could be submitting.';
+    if (left === 30)  $('clocksub').textContent = 'fine. FINE. almost done.';
+    if (left <= 0) closeShakedown('your patience has been noted, and reported.');
+  };
+  clearInterval(timerHandle);
+  timerHandle = setInterval(tick, 1000);
+}
+
+function closeShakedown(msg) {
+  clearInterval(timerHandle);
+  $('shakedown').classList.remove('on');
+  $('clock').textContent = '5:00';
+  $('clocksub').textContent = 'time until we pretend to forgive you';
+  if (msg) toast(msg);
+  $('gameframe').contentWindow.focus();
+}
+
+window.addEventListener('message', e => {
+  const d = e.data || {};
+  if (d.type === 'crappy-bird:death') {
+    if (!$('shakedown').classList.contains('on') && Math.random() < STATE.block_probability) {
+      setTimeout(() => showShakedown(d.score|0), 900);   // let them read their own death first
+    }
+  }
+});
+
+/* ------------------------------------------------------------ payment */
+function ideasFor(amount) { return Math.max(0, Math.floor(amount)); }
+
+function updatePayMath() {
+  const v = parseFloat($('amount').value);
+  if (isNaN(v) || v < 1) {
+    $('paymath').textContent = 'minimum $1. the bird has a floor, and you are looking at it.';
+    $('paybtn').textContent = 'PAY THE BIRD';
+    return;
+  }
+  const n = ideasFor(v);
+  let label = 'PAY $' + Math.floor(v);
+  for (const [amt, text] of PAYLABELS) if (v >= amt) label = text;
+  $('paybtn').textContent = label;
+  const frac = v - Math.floor(v);
+  $('paymath').textContent = '= ' + n + ' feature idea' + (n === 1 ? '' : 's') +
+    ' fed to the machine' +
+    (frac > 0 ? ' (the ' + Math.round(frac*100) + '¢ remainder is a tip. the bird keeps it.)' : '');
+}
+$('amount').addEventListener('input', updatePayMath);
+
+$('paybtn').addEventListener('click', async () => {
+  const v = parseFloat($('amount').value);
+  if (isNaN(v) || v < 1) { updatePayMath(); return; }
+  const cents = Math.round(v * 100);
+  $('paybtn').disabled = true;
+  $('paybtn').textContent = 'summoning the money tube…';
+  try {
+    const endpoint = STATE.dev_mode ? '/api/dev/pay' : '/api/checkout';
+    const r = await fetch(endpoint, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ amount_cents: cents }),
+    });
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.detail || 'payment machine broke');
+    location.href = j.url;
+  } catch (err) {
+    toast(String(err.message || err));
+    $('paybtn').disabled = false;
+    updatePayMath();
+  }
+});
+
+$('waitout').addEventListener('click', () => {
+  closeShakedown('respect. the bird also would not have paid.');
+});
+
+/* -------------------------------------------------------------- toast */
+let toastT = null;
+function toast(msg) {
+  const el = $('toast');
+  el.textContent = msg;
+  el.style.display = 'block';
+  clearTimeout(toastT);
+  toastT = setTimeout(() => { el.style.display = 'none'; }, 3600);
+}
+
+if (new URLSearchParams(location.search).get('cancelled')) {
+  toast('payment cancelled. the bird saw that. the bird remembers.');
+  history.replaceState(null, '', '/');
+}
+</script>
+</body>
+</html>

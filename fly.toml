@@ -1,0 +1,26 @@
+# fly.io config — `fly launch --copy-config` will pick this up.
+# Change `app` to whatever name you claim.
+app = "crappy-bird"
+primary_region = "sjc"
+
+[build]
+
+[env]
+  DB_PATH = "/data/crappy.db"
+  GITHUB_BRANCH = "main"
+  # Set APP_BASE_URL, GITHUB_REPO here after launch; secrets go via `fly secrets set`.
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+
+[mounts]
+  source = "crappy_data"
+  destination = "/data"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "256mb"

@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+.venv/
+data/
+.env
+.env.*
+!.env.example
+agent/ideas.json
+agent/release.json
+agent/claude_output.json
+agent/claude_stderr.log
+agent/screenshots/
+.DS_Store
