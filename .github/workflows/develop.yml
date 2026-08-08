@@ -72,21 +72,37 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           # per-session budget cap in USD; override via a repo variable if needed
           MAX_SESSION_USD: ${{ vars.MAX_SESSION_USD || '8' }}
+          # activates the budget-meter hook (.claude/settings.json -> scripts/budget_reminder.py)
+          CRAPPY_DEV_RUN: "1"
         run: |
           set +e
+          # Budget, three ways:
+          #  - enforced: --max-budget-usd (native; counts subagents; kills at cap)
+          #  - visible:  the cap is written into the mission brief below
+          #  - metered:  the PostToolUse hook injects a spend meter every ~$2
+          prompt="$(cat agent/AGENT_PROMPT.md)
+
+          ## THIS RUN'S BUDGET
+          You have a hard cap of \$${MAX_SESSION_USD} of API spend for this entire release
+          (subagent spend counts). The harness terminates the session the moment the cap
+          is reached — mid-thought, no appeal. A BUDGET METER system note will appear
+          roughly every \$2 of spend. Scope the work so implementation, verification,
+          changelog and release.json all fit comfortably inside the cap."
+
           # stream-json = the full turn-by-turn transcript (every message, tool
-          # call and tool result), one JSON object per line. This is the telemetry —
-          # and the budget watchdog's meter.
-          claude -p "$(cat agent/AGENT_PROMPT.md)" \
+          # call and tool result), one JSON object per line. This is the telemetry.
+          claude -p "$prompt" \
             --model claude-opus-5 \
             --dangerously-skip-permissions \
             --verbose \
             --max-turns 250 \
-            --output-format stream-json > agent/claude_transcript.jsonl 2> agent/claude_stderr.log &
-          CLAUDE_PID=$!
+            --max-budget-usd "$MAX_SESSION_USD" \
+            --output-format stream-json > agent/claude_transcript.jsonl 2> agent/claude_stderr.log
+          echo "claude exit code: $?"
 
           # price the transcript's usage events (Opus 5: $5/M in, $25/M out,
           # 1.25x cache write, 0.1x cache read). Tolerant of a partial last line.
+          # Used as the spend fallback when there's no result event (capped run).
           usage_cost() {
             jq -Rrs '
               [ split("\n")[] | select(length > 0) | (fromjson? // empty)
@@ -98,23 +114,6 @@ jobs:
               | ($in * 5 + $out * 25 + $cw * 6.25 + $cr * 0.5) / 1000000
             ' agent/claude_transcript.jsonl 2>/dev/null || echo 0
           }
-
-          BUDGET_KILLED=0
-          while kill -0 $CLAUDE_PID 2>/dev/null; do
-            sleep 20
-            est=$(usage_cost)
-            echo "watchdog: estimated spend \$${est} / \$${MAX_SESSION_USD}"
-            if awk "BEGIN { exit !($est > $MAX_SESSION_USD) }"; then
-              echo "BUDGET WATCHDOG: \$${est} exceeds \$${MAX_SESSION_USD} — terminating the developer mid-thought"
-              BUDGET_KILLED=1
-              kill $CLAUDE_PID 2>/dev/null
-              sleep 5
-              kill -9 $CLAUDE_PID 2>/dev/null
-              break
-            fi
-          done
-          wait $CLAUDE_PID
-          echo "claude exit code: $? (budget-killed: $BUDGET_KILLED)"
 
           # scrub secrets before the transcript leaves this runner in any form —
           # if the agent ever echoes its environment, the key would be in here

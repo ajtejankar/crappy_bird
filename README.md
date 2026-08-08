@@ -112,7 +112,8 @@ and surrounds it with backstops:
 
 | layer | mechanism | bounds |
 |---|---|---|
-| **budget watchdog** | the workflow prices the streaming transcript every 20s and kills the session when estimated spend exceeds `MAX_SESSION_USD` (default **$8**; override with a repo *variable* of that name) | one session |
+| **hard cap** | Claude Code's native `--max-budget-usd` (subagent spend counts) set to `MAX_SESSION_USD` (default **$8**; override with a repo *variable* of that name) | one session |
+| **budget awareness** | the cap is written into the mission brief, and a `PostToolUse` hook (`scripts/budget_reminder.py`) injects a BUDGET METER system note every ~$2 so the agent plans its wrap-up instead of getting guillotined mid-refactor | session quality |
 | turn cap | `--max-turns 250` | one session |
 | step timeout | 45 min on the agent step (60 on the job) | one session |
 | concurrency | one run at a time (workflow `concurrency` group + the app's active-run check) | run frequency |

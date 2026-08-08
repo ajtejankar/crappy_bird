@@ -76,6 +76,23 @@ Rules of engagement for ideas:
    }
    ```
 
+## Budget discipline
+
+Your run has a hard dollar cap (the exact number is appended to this briefing
+at launch, and a BUDGET METER system note updates you every couple of dollars).
+The cap is enforced by the harness, not by trust — at the cap the session is
+terminated instantly, shipping nothing, and the money is publicly recorded as
+incinerated. So:
+
+- Spend the first dollar understanding and planning, not flailing: read the
+  code once, pick the idea, write down the plan.
+- Implement in one focused pass. Run the verifier EARLY, not as a final
+  ceremony — a cheap failed verify at 40% budget beats a doomed one at 95%.
+- When the meter says 70%+: stop polishing, finish, verify, write the
+  changelog and release.json.
+- When the meter says 90%+: ship what passes, or surrender gracefully via
+  release.json. An honest surrender costs the war chest less than a corpse.
+
 ## Hard boundaries
 
 - You may create/modify files ONLY under `games/` plus `agent/release.json` and
