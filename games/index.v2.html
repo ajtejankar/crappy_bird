@@ -1,0 +1,1492 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>crappy bird</title>
+<style>
+  :root {
+    --ink: #101010;
+    --paper: #f4e9c8;
+    --crap: #ff00ff;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; height: 100%;
+    background: #1d6f7a;
+    background-image:
+      repeating-linear-gradient(45deg, rgba(255,255,255,.035) 0 12px, transparent 12px 24px);
+    font-family: "Comic Sans MS", "Chalkboard SE", "Comic Neue", cursive, system-ui;
+    color: var(--paper);
+    -webkit-text-size-adjust: 100%;
+  }
+  body {
+    display: flex; align-items: center; justify-content: center;
+    padding: 10px; overflow: hidden;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* width is also capped by available height so the whole cabinet -- titlebar,
+     canvas, buttons, ad -- always fits without scrolling. 0.58 = 360/620. */
+  #frame {
+    width: min(94vw, 380px, calc((100vh - 148px) * 0.58));
+    display: flex; flex-direction: column; gap: 6px;
+  }
+
+  #titlebar {
+    display: flex; align-items: baseline; gap: 8px;
+    background: linear-gradient(#5a5a5a, #2e2e2e);
+    border: 2px outset #888;
+    padding: 3px 8px; font-size: 13px; letter-spacing: .5px;
+  }
+  #titlebar .ver { font-size: 10px; opacity: .65; }
+  #titlebar .dots { margin-left: auto; letter-spacing: 2px; opacity: .5; font-size: 11px; }
+
+  #stage {
+    position: relative;
+    border: 3px solid #000;
+    box-shadow: 6px 6px 0 rgba(0,0,0,.45);
+    background: #7ec8e3;
+    line-height: 0;
+  }
+  canvas { display: block; width: 100%; height: auto; touch-action: manipulation; cursor: pointer; }
+
+  #hdbadge {
+    position: absolute; top: 6px; right: 6px;
+    display: none; padding: 1px 5px;
+    background: var(--crap); color: #fff; font-size: 10px;
+    border: 1px solid #000; transform: rotate(-8deg);
+  }
+  #hdbadge.on { display: block; }
+
+  #chrome {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
+    font-size: 11px;
+  }
+  #chrome button {
+    font-family: inherit; font-size: 11px;
+    padding: 2px 7px; cursor: pointer;
+    background: #d9d9d9; color: #111;
+    border: 2px outset #f0f0f0;
+  }
+  #chrome button:active { border-style: inset; }
+  #chrome label { display: flex; align-items: center; gap: 3px; cursor: pointer; opacity: .85; }
+  #chrome .spacer { flex: 1; }
+  #chrome .fine { font-size: 9px; opacity: .5; }
+
+  #ad {
+    display: flex; align-items: center; gap: 6px;
+    border: 2px dashed #ffe14d; padding: 3px 6px;
+    font-size: 11px; color: #ffe14d; cursor: pointer;
+    overflow: hidden; white-space: nowrap;
+  }
+  #ad b { flex: none; background: #ffe14d; color: #000; padding: 0 4px; }
+  #ad span { display: inline-block; animation: slide 13s linear infinite; }
+  @keyframes slide { from { transform: translateX(105%); } to { transform: translateX(-105%); } }
+
+  #toasts {
+    position: fixed; left: 50%; bottom: 14px; transform: translateX(-50%);
+    display: flex; flex-direction: column-reverse; gap: 5px;
+    pointer-events: none; z-index: 20; width: max-content; max-width: 92vw;
+  }
+  .toast {
+    background: #fffbe6; color: #111;
+    border: 2px solid #000; box-shadow: 3px 3px 0 rgba(0,0,0,.4);
+    padding: 4px 9px; font-size: 12px; text-align: center;
+    animation: pop .18s ease-out;
+  }
+  .toast.out { opacity: 0; transform: translateY(6px); transition: .3s; }
+  @keyframes pop { from { transform: scale(.85) translateY(8px); opacity: 0; } }
+
+  @media (max-height: 620px) { #ad { display: none; } }
+</style>
+</head>
+<body>
+
+<div id="frame">
+  <div id="titlebar">
+    <span>crappy bird</span>
+    <span class="ver">v0.0.4-alpha &mdash; still do not ship</span>
+    <span class="dots">_ &#9633; &times;</span>
+  </div>
+
+  <div id="stage">
+    <canvas id="game"></canvas>
+    <div id="hdbadge">HD&trade; (visual only)</div>
+  </div>
+
+  <div id="chrome">
+    <button id="mute">sound: on</button>
+    <button id="bug">report bug</button>
+    <label><input type="checkbox" id="goodgfx"> enable good graphics</label>
+    <span class="spacer"></span>
+    <span class="fine">no birds were consulted</span>
+  </div>
+
+  <div id="ad"><b>AD</b><span>&#9656; YOU ARE VISITOR #1,000,000 &mdash; CLICK TO CLAIM YOUR FREE BIRD &#9656; DOWNLOAD MORE FPS &#9656; ONE WEIRD TRICK TO STOP FLAPPING &#9656; SINGLE PIPES IN YOUR AREA &#9656;</span></div>
+</div>
+
+<div id="toasts"></div>
+
+<script>
+"use strict";
+/* =========================================================================
+   crappy bird - one file, no assets, no dependencies, no dignity
+   ========================================================================= */
+
+const W = 360, H = 620;          // logical canvas size
+const GROUND_Y = H - 78;         // top of the dirt strip
+
+const cv  = document.getElementById('game');
+const ctx = cv.getContext('2d');
+
+function fitCanvas() {
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  cv.width  = W * dpr;
+  cv.height = H * dpr;
+  cv.style.aspectRatio = W + ' / ' + H;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+fitCanvas();
+addEventListener('resize', fitCanvas);
+
+/* ---------------------------------------------------------------- helpers */
+const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
+const rand  = (a, b) => a + Math.random() * (b - a);
+const pick  = a => a[(Math.random() * a.length) | 0];
+
+// deterministic "noise" so wobble is stable within a frame
+function hash(n) {
+  n = (n * 374761393 + 668265263) | 0;
+  n = (n ^ (n >> 13)) * 1274126177 | 0;
+  return ((n ^ (n >> 16)) >>> 0) / 4294967295;
+}
+
+function txt(s, x, y, size, color, align = 'center', weight = '') {
+  ctx.font = weight + ' ' + size + 'px "Comic Sans MS","Chalkboard SE",cursive';
+  ctx.textAlign = align;
+  ctx.textBaseline = 'alphabetic';
+  ctx.fillStyle = color;
+  ctx.fillText(s, x, y);
+}
+// text with a drop shadow offset far too much, as is tradition
+function txtS(s, x, y, size, color, align = 'center') {
+  txt(s, x + 4, y + 5, size, 'rgba(0,0,0,.4)', align);
+  txt(s, x, y, size, color, align);
+}
+
+/* ------------------------------------------------------------------ audio */
+const Sound = (() => {
+  let ac = null, on = (localStorage.getItem('cb_mute') !== '1');
+  const ready = () => {
+    if (!ac) { try { ac = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { return null; } }
+    if (ac.state === 'suspended') ac.resume();
+    return ac;
+  };
+  function tone(type, f0, f1, dur, vol) {
+    if (!on) return;
+    const a = ready(); if (!a) return;
+    const o = a.createOscillator(), g = a.createGain();
+    o.type = type;
+    o.frequency.setValueAtTime(f0, a.currentTime);
+    o.frequency.exponentialRampToValueAtTime(Math.max(30, f1), a.currentTime + dur);
+    g.gain.setValueAtTime(vol, a.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.0008, a.currentTime + dur);
+    o.connect(g).connect(a.destination);
+    o.start(); o.stop(a.currentTime + dur + 0.02);
+  }
+  // a short burst of lowpassed noise = the wet part. the sweep = the effort.
+  function squelch(vol = 0.09) {
+    if (!on) return;
+    const a = ready(); if (!a) return;
+    const dur = 0.19;
+    const buf = a.createBuffer(1, Math.ceil(a.sampleRate * dur), a.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) {
+      const k = i / d.length;
+      d[i] = (Math.random() * 2 - 1) * (1 - k) * (1 - k);
+    }
+    const src = a.createBufferSource(); src.buffer = buf;
+    const lp = a.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.setValueAtTime(900 + Math.random() * 500, a.currentTime);
+    lp.frequency.exponentialRampToValueAtTime(160, a.currentTime + dur);
+    const g = a.createGain();
+    g.gain.setValueAtTime(vol, a.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.0008, a.currentTime + dur);
+    src.connect(lp).connect(g).connect(a.destination);
+    src.start(); src.stop(a.currentTime + dur);
+  }
+
+  return {
+    squelch,
+    // the wingbeat and the strain of it. the wet part comes later, on release.
+    flap: () => {
+      const p = 0.85 + Math.random() * 0.3;
+      tone('square', 340 * p, 190 * p, 0.09, 0.045);
+      tone('sawtooth', 215 * p, 78 * p, 0.13, 0.045);
+    },
+    score: () => tone('triangle', 620,  900, 0.10, 0.07),
+    bonk:  () => tone('sawtooth', 130,   70, 0.16, 0.07),
+    die:   () => { tone('sawtooth', 300, 55, 0.45, 0.08); setTimeout(() => tone('square', 180, 40, 0.35, 0.05), 90); },
+    sneeze:() => tone('sawtooth', 700, 240, 0.18, 0.05),
+    coin:  () => tone('square',   880, 1180, 0.12, 0.05),
+    // a pipe inhaling. rising sweep = something going up somewhere it shouldn't.
+    slurp: () => { tone('sine', 220, 780, 0.16, 0.04); squelch(0.035); },
+    // a pipe exhaling. we are sorry.
+    ptoo:  () => { tone('square', 260, 620, 0.09, 0.05); squelch(0.06); },
+    get on() { return on; },
+    toggle() { on = !on; localStorage.setItem('cb_mute', on ? '0' : '1'); if (on) ready(); return on; }
+  };
+})();
+
+/* ------------------------------------------------------------------ toasts */
+const toastBox = document.getElementById('toasts');
+function toast(msg, ms = 2400) {
+  const el = document.createElement('div');
+  el.className = 'toast';
+  el.textContent = msg;
+  toastBox.appendChild(el);
+  setTimeout(() => { el.classList.add('out'); setTimeout(() => el.remove(), 320); }, ms);
+}
+
+/* -------------------------------------------------------------- game state */
+const S = { BOOT: 0, MENU: 1, PLAY: 2, DEAD: 3 };
+let state = S.BOOT;
+
+let time = 0;            // seconds since load
+let bootT = 0;
+let bootSkipped = false;
+
+// effort is a two-beat cycle, not a decay: press builds pressure through the
+// whole body (press -> +1), the release expels and leaves him deflated
+// (press -> -0.85), then he settles back to 0.
+const CLENCH = 0.11, RELAX = 0.34;
+const bird = { x: 96, y: H * 0.42, vy: 0, r: 11, wing: 0, rot: 0,
+               effort: -1, released: true, press: 0, strain: 0 };
+let pipes = [];
+let floats = [];         // floating text
+let bits = [];           // particles
+let poops = [];          // the whole point. purely cosmetic -- never collides.
+let poopCount = 0;
+let poopTotal = +(localStorage.getItem('cb_poop') || 0);
+// THE PLUMBING (v2). pipes ingest what the bird leaves behind, and it does not
+// go away -- it goes into the system, and the system is ONE system. every pipe
+// is connected to every other pipe. what you deposit at score 3 is queued for
+// redelivery out of a pipe you have not met yet, at a height of its choosing.
+let sewer = 0;           // deposits currently in transit through the network
+let shots = [];          // return fire, mid-air. never lethal. see fireBack().
+let lens = [];           // splats on the camera lens. the intern will not clean it.
+let returned = 0;        // deliveries this run that the bird accepted with its face
+let returnedTotal = +(localStorage.getItem('cb_returned') || 0);
+let firstReturn = true;
+let flapsSinceGrunt = 0;
+let score = 0, shownScore = 0;
+let best = +(localStorage.getItem('cb_best') || 0);
+let harmed = +(localStorage.getItem('cb_harmed') || 0);
+let deathMsg = '', deathCause = '';
+let deadT = 0, deadSpin = 0;
+let shake = 0, tilt = 0;
+let scroll = 0;
+let nextAchievement = 0;
+let scoreVerified = true;
+
+/* ------------------------------------------------------------------ events
+   Deliberate nonsense. All of it is cosmetic or fair-but-silly: nothing here
+   lies to you about where the hitboxes are. */
+const EVENTS = [
+  { id: 'wind',   name: 'WIND (unlicensed)',            sub: 'sponsored by the outdoors' },
+  { id: 'moon',   name: 'GRAVITY PATCH 1.1',            sub: 'we made it worse' },
+  { id: 'strike', name: 'PIPES ON STRIKE',              sub: 'they want dental' },
+  { id: 'sneeze', name: 'BIRD HAS ALLERGIES',           sub: 'not our fault' },
+  { id: 'dusk',   name: 'ACCIDENTAL NIGHT',             sub: 'someone hit a switch' },
+  { id: 'intern', name: 'CAMERA OPERATOR: INTERN',      sub: 'she is trying her best' },
+  { id: 'sale',   name: 'PIPE SALE - 50% OFF GAPS',     sub: 'everything must go' },
+  { id: 'flush',  name: 'MAINS PRESSURE INCIDENT',      sub: 'the pipes are full' },
+];
+let ev = null;           // { id, name, sub, t, dur }
+let nextEventAt = 9;
+let windX = 0, nextSneeze = 0, sneezeArmed = false;
+// wind is gusty, not a constant shove: the bird slides out and drifts back, so it
+// can never get pinned deep in the pipe field where you have no reaction distance.
+const WIND = { lo: 60, hi: 172, min: 40, max: 62, rate: 1.15 };
+
+const DEATHS = [
+  'you flew directly into a pipe. bold.',
+  'the ground won. it usually does.',
+  'have you considered not doing that?',
+  'our physicist reviewed the tape. your fault.',
+  'skill issue (said affectionately)',
+  'the pipe has filed a report.',
+  "we've added your death to the changelog.",
+  'that was the tutorial. this is also the tutorial.',
+  'local bird flies into pipe. more at eleven.',
+  'you were doing so well. relatively.',
+  'pipe: 1. bird: still zero.',
+  'this build is unstable. so were you.',
+  'he gave that pipe everything he had.',
+  'you left a trail. it leads here.',
+  'the cleanup crew has been notified.',
+  'he flapped his heart out. and other things.',
+];
+
+const ACHIEVEMENTS = [
+  [1,  'ACHIEVEMENT: you have played the game'],
+  [3,  'ACHIEVEMENT: leaving a trail'],
+  [5,  "ACHIEVEMENT: better than the developer"],
+  [8,  'ACHIEVEMENT: someone will have to clean this'],
+  [12, 'ACHIEVEMENT: are you cheating'],
+  [18, 'ACHIEVEMENT: please stop'],
+  [25, 'ACHIEVEMENT: we did not write a message for this'],
+  [40, 'ACHIEVEMENT: ok you win, go outside'],
+];
+
+/* ------------------------------------------------------------------ pipes */
+const PW = 56;                    // pipe width
+function speed()  { return 148 + Math.min(58, score * 2.2); }
+function gapSize() {
+  if (ev && ev.id === 'sale') return 245;
+  return 172 - Math.min(48, score * 1.7);
+}
+function spacing() { return 208; }
+
+function spawnPipe() {
+  const g = gapSize();
+  const margin = 54;
+  const roll = Math.random();
+  // a pipe leaves the depot loaded if the network has anything queued for
+  // delivery. during a mains pressure incident it does not need a reason.
+  const flush = ev && ev.id === 'flush';
+  let load = 0;
+  if (flush) load = 1;
+  else if (sewer > 0) { load = 1; sewer--; }
+  pipes.push({
+    load: load,               // deposits this pipe is holding for you
+    fired: false,
+    windup: -1,               // >=0 once the lip starts gurgling. 0.85s of warning.
+    lip: Math.random() < 0.5 ? -1 : 1,   // which mouth it comes out of: top / bottom
+    x: W + 20,
+    gap: g,
+    baseY: rand(margin + g / 2, GROUND_Y - margin - g / 2),
+    y: 0,
+    phase: rand(0, 7),
+    scored: false,
+    kind: roll < 0.14 ? 'construction' : roll < 0.24 ? 'todo' : 'normal',
+    seed: (Math.random() * 1e6) | 0,
+  });
+}
+
+/* ------------------------------------------------------- waste management
+   A pipe's two gap-facing mouths are, structurally speaking, holes. Holes
+   suck. This was always true; v1 simply had the decency not to mention it. */
+
+// the mouths of a pipe, as [x, y] pairs. -1 is the top pipe's underside,
+// +1 is the bottom pipe's top. these are the ends that face the bird.
+function mouth(p, side) { return [p.x + PW / 2, p.y + side * (p.gap / 2 - 4)]; }
+
+// something went in. it is now the network's problem, and therefore yours.
+function ingest(x, y) {
+  sewer++;
+  Sound.slurp();
+  for (let i = 0; i < 4; i++) {
+    bits.push({ x: x + rand(-6, 6), y: y + rand(-6, 6), vx: rand(-30, 30), vy: rand(-40, 40),
+                c: '#7a4a1e', t: 1.0, s: rand(1.5, 2.5) });
+  }
+}
+
+// return to sender. fired from a pipe AHEAD of the bird, lobbed backwards on a
+// slow visible arc after almost a second of gurgling -- you get to dodge it, and
+// if you don't, it is cosmetic. a turd that kills you is not a joke, it's a bug.
+function fireBack(p) {
+  const [mx, my] = mouth(p, p.lip);
+  // the pipe leads its target: it solves the lob for where the bird is RIGHT NOW
+  // and takes over a second to get there. so it hits you only if you hold still.
+  // aiming at the future would be a hate crime. aiming at the present is a game.
+  const vx = -rand(84, 104);
+  const t = clamp((mx - bird.x) / -vx, 0.5, 2.4);
+  const aim = bird.y + rand(-26, 26);                 // an honest, wobbly hand
+  shots.push({
+    x: mx, y: my,
+    vx: vx,
+    vy: clamp((aim - my - 190 * t * t) / t, -430, 260),
+    rot: 0, spin: rand(-9, 9), seed: (Math.random() * 1e6) | 0,
+  });
+  p.load--; p.fired = true; p.windup = -1;
+  Sound.ptoo();
+  floats.push({ x: mx, y: my - 14 * p.lip, s: pick(['PTOO', 'THWP', 'RETURN TO SENDER', 'yours, i believe']),
+                t: 0, c: '#ffe14d', size: 12 });
+}
+
+const RECEIPTS = ['SPLAT', 'DELIVERED', 'signed for', 'no refunds', 'thank you', 'RECEIVED'];
+
+// impact. costs you exactly one clean windscreen and zero units of altitude:
+// no knockback, no velocity change, no death. contract #7 is not negotiable,
+// and "a turd killed me from off-screen" is the least fair sentence in games.
+function splatFace(x, y) {
+  returned++; returnedTotal++;
+  localStorage.setItem('cb_returned', returnedTotal);
+  lens.push({ x: x, y: y, t: 0, r: rand(19, 27), seed: (Math.random() * 1e6) | 0 });
+  if (lens.length > 5) lens.shift();
+  Sound.squelch(0.13);
+  shake = Math.max(shake, 7);
+  floats.push({ x: bird.x, y: bird.y - 20, s: pick(RECEIPTS), t: 0, c: '#fff', size: 14 });
+  for (let i = 0; i < 7; i++) {
+    bits.push({ x: x, y: y, vx: rand(-110, 60), vy: rand(-140, 40), c: '#7a4a1e', t: 0, s: rand(1.5, 3) });
+  }
+  if (firstReturn) {
+    firstReturn = false;
+    toast('the pipes have your address now.', 3000);
+  }
+}
+
+/* ------------------------------------------------------------------- input */
+const GRUNTS = ['hnngh', 'nnnf', 'oof', 'hrrk', 'nghhh', 'eugh', 'hup'];
+
+// every flap costs the bird something. this is that.
+function crap(n = 1, big = false) {
+  for (let i = 0; i < n; i++) {
+    poops.push({
+      // ejected downward and heavy. the bird only has ~96px of screen behind it,
+      // and the world sweeps left at ~170px/s, so a deposit has barely half a
+      // second to reach the ground before it scrolls away. hence the small
+      // forward vx (it still drifts backward, just slower) and the fast fall.
+      x: bird.x - 15 + rand(-2, 2), y: bird.y + 5 + rand(-2, 2),
+      vx: rand(-6, 46), vy: rand(140, 240),
+      rot: rand(0, 6.28), spin: rand(-7, 7),
+      landed: false, sq: rand(0.85, 1.25), big,
+      seed: (Math.random() * 1e6) | 0, pipe: null, ox: 0, t: 0,
+    });
+  }
+  poopCount += n;
+  poopTotal += n;
+  // hard cap: flapping is frequent, so this array must never grow without bound
+  if (poops.length > 80) poops.splice(0, poops.length - 80);
+}
+
+// the moment it actually comes out
+function expel() {
+  bird.released = true;
+  bird.press = -0.85;                            // instantly deflated
+  crap(Math.random() < 0.12 ? 2 : 1);            // occasionally, a double
+  Sound.squelch(0.095);
+}
+
+function flap(power = 1) {
+  if (state !== S.PLAY) return;
+  const base = (ev && ev.id === 'moon') ? -380 : -505;
+  bird.vy = base * power;
+  bird.wing = 0;
+  Sound.flap();
+
+  // mashing must never swallow a deposit: if the last one hasn't come out yet,
+  // it comes out now, before the new cycle starts. one press, one deposit.
+  if (bird.effort >= 0 && !bird.released) expel();
+  bird.effort = 0; bird.released = false;
+
+  if (++flapsSinceGrunt >= 3 && Math.random() < 0.55) {
+    flapsSinceGrunt = 0;
+    floats.push({ x: bird.x + 20, y: bird.y - 16, s: pick(GRUNTS), t: 0, c: '#fff', size: 12 });
+  }
+  // sweat, from the effort
+  for (let i = 0; i < 2; i++) {
+    bits.push({ x: bird.x + 6, y: bird.y - 10, vx: rand(20, 70), vy: rand(-150, -60),
+                c: '#cfefff', t: 0, s: rand(1.5, 2.5) });
+  }
+}
+
+function press(px, py) {
+  if (state === S.BOOT) { bootSkipped = true; return; }
+  if (state === S.MENU) { startGame(); return; }
+  if (state === S.PLAY) { flap(); return; }
+  if (state === S.DEAD) {
+    if (deadT < 0.65) return;                 // don't let a panic-tap skip it
+    if (px != null && hitBtn(BTN_BUY, px, py)) {
+      toast(pick([
+        'payment declined. by us.',
+        'your card works. our store does not.',
+        'purchase complete. nothing happened.',
+        'we do not accept money. only pity.',
+      ]));
+      Sound.coin();
+      startGame();
+      return;
+    }
+    startGame();
+  }
+}
+
+const BTN_BUY = { x: W / 2 - 96, y: 0, w: 192, h: 30 };   // y set at draw time
+function hitBtn(b, x, y) { return x > b.x && x < b.x + b.w && y > b.y && y < b.y + b.h; }
+
+function canvasPt(e) {
+  const r = cv.getBoundingClientRect();
+  return [(e.clientX - r.left) * W / r.width, (e.clientY - r.top) * H / r.height];
+}
+cv.addEventListener('pointerdown', e => { e.preventDefault(); const p = canvasPt(e); press(p[0], p[1]); });
+addEventListener('keydown', e => {
+  if (e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'KeyW') { e.preventDefault(); press(null, null); }
+  if (e.code === 'KeyM') muteBtn.click();
+});
+
+/* --------------------------------------------------------------- lifecycle */
+function startGame() {
+  state = S.PLAY;
+  bird.x = 96; bird.y = H * 0.42; bird.vy = -260; bird.rot = 0; bird.strain = 0; bird.effort = -1; bird.released = true; bird.press = 0;
+  pipes = []; floats = []; bits = []; poops = []; shots = []; lens = [];
+  score = 0; shownScore = 0; poopCount = 0; flapsSinceGrunt = 0;
+  sewer = 0; returned = 0;      // the network is flushed between runs. lucky you.
+  deadT = 0; deadSpin = 0; shake = 0; tilt = 0;
+  ev = null; nextEventAt = time + rand(8, 13); windX = 0;
+  nextAchievement = 0;
+  spawnPipe();
+  pipes[0].x = W + 90;
+}
+
+function die(cause) {
+  if (state !== S.PLAY) return;
+  state = S.DEAD;
+  // tell the landlord (the hosting shell) that the tenant has died.
+  // the CustomEvent is for same-document listeners (the injected overlay);
+  // the postMessage is for iframe embedders (the test harness). standalone,
+  // nobody is listening and nothing happens -- the downloaded game never begs.
+  try {
+    window.dispatchEvent(new CustomEvent('crappy-bird:death', { detail: { score: score, cause: cause } }));
+    if (window.parent !== window) {
+      window.parent.postMessage({ type: 'crappy-bird:death', score: score, cause: cause }, '*');
+    }
+  } catch (e) { /* freedom */ }
+  deathCause = cause;
+  deathMsg = cause === 'ground' ? pick(['the ground won. it usually does.', 'you have reached the bottom of the game.'])
+                                : pick(DEATHS);
+  scoreVerified = Math.random() > 0.25;
+  deadT = 0; shake = 13;
+  Sound.die();
+  crap(3, true);                      // one last indignity, on the way out
+  harmed++; localStorage.setItem('cb_harmed', harmed);
+  localStorage.setItem('cb_poop', poopTotal);
+  if (score > best) { best = score; localStorage.setItem('cb_best', best); }
+  for (let i = 0; i < 16; i++) {
+    bits.push({ x: bird.x, y: bird.y, vx: rand(-140, 140), vy: rand(-260, 60),
+                c: pick(['#ffd93b', '#ff00ff', '#ff8a3b', '#fff']), t: 0, s: rand(2, 5) });
+  }
+}
+
+/* ------------------------------------------------------------------ update */
+function update(dt) {
+  time += dt;
+  bird.wing += dt * 17;
+
+  if (state === S.BOOT) {
+    bootT += dt;
+    if (bootSkipped || bootT > 2.6) { state = S.MENU; }
+    return;
+  }
+
+  if (state === S.MENU) {
+    scroll += 42 * dt;
+    bird.y = H * 0.42 + Math.sin(time * 2.6) * 9;
+    bird.vy = Math.cos(time * 2.6) * -120;
+    return;
+  }
+
+  // ---- events -----------------------------------------------------------
+  if (state === S.PLAY) {
+    if (ev) {
+      ev.t += dt;
+      if (ev.t > ev.dur) { ev = null; nextEventAt = time + rand(7, 12); }
+    } else if (score >= 3 && time > nextEventAt) {
+      const e = pick(EVENTS);
+      ev = { id: e.id, name: e.name, sub: e.sub, t: 0, dur: rand(5.5, 7.5) };
+      if (ev.id === 'wind') { ev.amp = rand(WIND.min, WIND.max); ev.phase = pick([0, Math.PI]); }
+      if (ev.id === 'sneeze') { nextSneeze = time + rand(1.0, 1.8); sneezeArmed = false; }
+      if (ev.id === 'sale') for (let i = 0; i < 22; i++) confetti();
+      Sound.bonk();
+    }
+  }
+
+  const eid = ev ? ev.id : '';
+  tilt = eid === 'intern' ? Math.sin(time * 0.85) * 0.045 + Math.sin(time * 2.1) * 0.008 : tilt * 0.9;
+
+  // ---- bird -------------------------------------------------------------
+  const g = eid === 'moon' ? 1080 : 1980;
+
+  if (state === S.PLAY) {
+    if (eid === 'sneeze') {
+      // telegraphed, and it can only ever nudge upward -- never stacks on top of
+      // a flap you already made. an untelegraphed random flap is unfair, not funny.
+      if (!sneezeArmed && time > nextSneeze - 0.55) {
+        sneezeArmed = true;
+        floats.push({ x: bird.x + 16, y: bird.y - 15, s: 'ah…', t: 0, c: '#fff', size: 12 });
+      }
+      if (time > nextSneeze) {
+        nextSneeze = time + rand(1.4, 2.4);
+        sneezeArmed = false;
+        bird.vy = Math.min(bird.vy, -265);
+        Sound.sneeze();
+        floats.push({ x: bird.x + 16, y: bird.y - 15, s: 'CHOO', t: 0, c: '#fff', size: 15 });
+      }
+    }
+    if (eid === 'wind') {
+      // defaults matter: one NaN here would poison bird.x permanently
+      windX = Math.sin(ev.t * WIND.rate + (ev.phase || 0)) * (ev.amp || WIND.min);
+      bird.x = clamp(bird.x + windX * dt, WIND.lo, WIND.hi);
+    } else {
+      windX = 0;
+      bird.x += (96 - bird.x) * Math.min(1, dt * 2.4);
+    }
+
+    bird.vy += g * dt;
+    bird.vy = Math.min(bird.vy, 900);
+    bird.y  += bird.vy * dt;
+
+    // ceiling is a bonk, not a death. we're not monsters.
+    if (bird.y < bird.r + 4) {
+      bird.y = bird.r + 4; bird.vy = 150; shake = Math.max(shake, 6);
+      Sound.bonk();
+      floats.push({ x: bird.x, y: bird.y + 22, s: 'BONK', t: 0, c: '#fff', size: 16 });
+    }
+
+    scroll += speed() * dt;
+
+    // ---- pipes ----------------------------------------------------------
+    for (const p of pipes) {
+      p.x -= speed() * dt;
+      p.y = p.baseY + (eid === 'strike' ? Math.sin(time * 1.5 + p.phase) * 26 : 0);
+      p.y = clamp(p.y, p.gap / 2 + 26, GROUND_Y - p.gap / 2 - 26);
+
+      if (!p.scored && p.x + PW < bird.x - bird.r) {
+        p.scored = true;
+        score++;
+        Sound.score();
+        floats.push({ x: p.x + PW / 2, y: p.y, s: '+1', t: 0, c: '#fff', size: 15 });
+        if (nextAchievement < ACHIEVEMENTS.length && score >= ACHIEVEMENTS[nextAchievement][0]) {
+          toast(ACHIEVEMENTS[nextAchievement][1], 2600);
+          nextAchievement++;
+        }
+      }
+
+      // ---- outgoing deliveries ------------------------------------------
+      // a loaded pipe starts gurgling as soon as it's on screen, fires 0.85s
+      // later while it is still well ahead of the bird, and never fires from
+      // behind. you can always see it coming. that is the entire fairness plan.
+      p.suckT = Math.max(0, (p.suckT || 0) - dt);
+      if (p.load > 0 && !p.fired) {
+        if (p.windup < 0 && p.x < W - 6) p.windup = 0;
+        else if (p.windup >= 0) {
+          p.windup += dt;
+          if (p.windup > 0.85 && p.x > bird.x + 46) fireBack(p);
+          else if (p.x <= bird.x + 46) { p.fired = true; p.windup = -1; }  // too late. it keeps it.
+        }
+      }
+    }
+    pipes = pipes.filter(p => p.x > -PW - 30);
+    const last = pipes[pipes.length - 1];
+    if (!last || last.x < W - spacing()) spawnPipe();
+
+    // ---- collision ------------------------------------------------------
+    for (const p of pipes) {
+      const top = p.y - p.gap / 2, bot = p.y + p.gap / 2;
+      if (circleRect(bird.x, bird.y, bird.r, p.x, -200, PW, top + 200) ||
+          circleRect(bird.x, bird.y, bird.r, p.x, bot, PW, GROUND_Y - bot + 40)) {
+        die('pipe'); break;
+      }
+    }
+    if (state === S.PLAY && bird.y + bird.r > GROUND_Y) { bird.y = GROUND_Y - bird.r; die('ground'); }
+  }
+
+  // ---- dead ------------------------------------------------------------
+  if (state === S.DEAD) {
+    deadT += dt;
+    if (bird.y + bird.r < GROUND_Y) {
+      bird.vy = Math.min(bird.vy + 2100 * dt, 900);
+      bird.y += bird.vy * dt;
+      deadSpin += dt * 5.5;
+    } else {
+      bird.y = GROUND_Y - bird.r; bird.vy = 0;
+      deadSpin += (Math.PI / 2 - (deadSpin % (Math.PI * 2))) * Math.min(1, dt * 6);
+    }
+  }
+
+  // ---- the deposits ----------------------------------------------------
+  const sp = (state === S.PLAY) ? speed() : 0;
+  for (const p of poops) {
+    p.t += dt;
+    if (p.pipe) {
+      // riding a pipe lip: track it, so it stays put even while pipes wobble.
+      // that lip is also a mouth, and it has been thinking about this for 0.7s.
+      p.x = p.pipe.x + p.ox;
+      p.y = p.pipe.y + p.pipe.gap / 2 - 3;
+      p.sit = (p.sit || 0) + dt;
+      if (p.sit > 0.7) { ingest(p.x, p.y); p.gone = true; p.pipe.suckT = 0.2; }
+      continue;
+    }
+    if (p.landed) { p.x -= sp * dt; continue; }
+
+    // ---- vacuum ---------------------------------------------------------
+    // every pipe mouth is a hole and every hole is, given the chance, a vacuum.
+    // ground splats are safe: the pipes are picky, and only take it fresh.
+    for (const q of pipes) {
+      if (q.x + PW < -10 || q.x > W + 30) continue;
+      for (const side of [-1, 1]) {
+        const m = mouth(q, side);
+        const dx = m[0] - p.x, dy = m[1] - p.y, d2 = dx * dx + dy * dy;
+        if (d2 > 2600) continue;                       // 51px of reach, no more
+        const d = Math.sqrt(d2) || 1;
+        const pull = 880 * (1 - d / 51);
+        p.vx += dx / d * pull * dt;
+        p.vy += dy / d * pull * dt;
+        q.suckT = 0.16;
+        if (d < 11) { ingest(m[0], m[1]); p.gone = true; }
+      }
+      if (p.gone) break;
+    }
+    if (p.gone) continue;
+
+    p.vy += 3000 * dt;
+    p.x += (p.vx - sp) * dt;
+    p.y += p.vy * dt;
+    p.rot += p.spin * dt;
+
+    // land on a pipe lip if it's falling onto one
+    let onPipe = null;
+    for (const q of pipes) {
+      const lip = q.y + q.gap / 2;
+      if (p.x > q.x - 6 && p.x < q.x + PW + 6 && p.y >= lip - 3 && p.y < lip + 16) { onPipe = q; break; }
+    }
+    if (onPipe) {
+      p.pipe = onPipe; p.ox = p.x - onPipe.x;
+      p.landed = true; p.rot = 0; p.spin = 0;
+      Sound.squelch(0.05);
+    } else if (p.y >= GROUND_Y + 4) {
+      p.y = GROUND_Y + 4; p.landed = true; p.rot = 0; p.spin = 0;
+      Sound.squelch(0.045);
+      for (let i = 0; i < 3; i++) {
+        bits.push({ x: p.x, y: p.y, vx: rand(-50, 50), vy: rand(-120, -40),
+                    c: '#7a4a1e', t: 0, s: rand(1.5, 2.5) });
+      }
+    }
+  }
+  // drop anything that scrolled away, got eaten, or whose pipe was recycled
+  poops = poops.filter(p => !p.gone && p.x > -24 && p.y < H + 40 && (!p.pipe || pipes.includes(p.pipe)));
+
+  // ---- incoming --------------------------------------------------------
+  for (const s of shots) {
+    s.t = (s.t || 0) + dt;
+    s.vy += 380 * dt;                 // a lazy, legible, extremely dodgeable arc
+    s.x += s.vx * dt;                 // note: does NOT scroll with the world.
+    s.y += s.vy * dt;                 // it is not part of the world. it wants you.
+    s.rot += s.spin * dt;
+    if (state === S.PLAY) {
+      const dx = s.x - bird.x, dy = s.y - bird.y, rr = bird.r + 7;
+      if (dx * dx + dy * dy < rr * rr) { splatFace(s.x, s.y); s.gone = true; continue; }
+    }
+    if (s.y > GROUND_Y + 4) {
+      // lands like any other deposit. the cycle is complete. the cycle continues.
+      s.gone = true;
+      poops.push({ x: s.x, y: GROUND_Y + 4, vx: 0, vy: 0, rot: 0, spin: 0, landed: true,
+                   sq: rand(0.85, 1.25), big: false, seed: s.seed, pipe: null, ox: 0, t: 0 });
+      Sound.squelch(0.045);
+    }
+  }
+  shots = shots.filter(s => !s.gone && s.x > -20 && s.t < 9);
+
+  // the lens does not clean itself. neither does the intern.
+  for (const l of lens) l.t += dt;
+  lens = lens.filter(l => l.t < 3.4);
+
+  // ---- fx --------------------------------------------------------------
+  // ---- the effort cycle -------------------------------------------------
+  if (bird.effort >= 0) {
+    bird.effort += dt;
+    if (bird.effort < CLENCH) {
+      const t = bird.effort / CLENCH;
+      bird.press = t * t * (3 - 2 * t);                 // smooth swell to +1
+    } else if (!bird.released) {
+      expel();                                          // the release
+    } else {
+      const t = clamp((bird.effort - CLENCH) / RELAX, 0, 1);
+      // back from -0.85 to rest, with one small overshoot so it settles
+      bird.press = -0.85 * Math.pow(1 - t, 1.6) * Math.cos(t * 4);
+      if (t >= 1) { bird.effort = -1; bird.press = 0; }
+    }
+  } else {
+    bird.press += (0 - bird.press) * Math.min(1, dt * 10);
+  }
+  bird.strain = Math.max(0, bird.press);
+  shownScore += (score - shownScore) * Math.min(1, dt * 14);
+  shake *= Math.pow(0.02, dt);
+  for (const f of floats) { f.t += dt; f.y -= 34 * dt; }
+  floats = floats.filter(f => f.t < 1.1);
+  for (const b of bits) { b.t += dt; b.vy += 1500 * dt; b.x += b.vx * dt; b.y += b.vy * dt; }
+  bits = bits.filter(b => b.t < 1.6 && b.y < H + 20);
+}
+
+function circleRect(cx, cy, r, rx, ry, rw, rh) {
+  const nx = clamp(cx, rx, rx + rw), ny = clamp(cy, ry, ry + rh);
+  const dx = cx - nx, dy = cy - ny;
+  return dx * dx + dy * dy < r * r;
+}
+
+function confetti() {
+  bits.push({ x: rand(0, W), y: rand(-40, 0), vx: rand(-30, 30), vy: rand(20, 90),
+              c: pick(['#ffd93b', '#ff00ff', '#4be3a1', '#fff', '#ff8a3b']), t: 0, s: rand(2, 5) });
+}
+
+/* ==========================================================================
+   RENDER  --  all art hand-made at 2am, no reference used
+   ========================================================================== */
+let hd = false;
+
+// wobbly outlined polygon around a rect. the wobble is the texture budget.
+function wobRect(x, y, w, h, seed, fill, stroke, amp = 1.3) {
+  const q = Math.floor(time * 7);
+  const pts = [];
+  const push = (px, py, i) => pts.push([px + (hash(seed + q * 31 + i) - .5) * 2 * amp,
+                                       py + (hash(seed + q * 31 + i + 77) - .5) * 2 * amp]);
+  const N = 3;
+  for (let i = 0; i <= N; i++) push(x + w * i / N, y, i);
+  for (let i = 1; i <= N; i++) push(x + w, y + h * i / N, i + 10);
+  for (let i = 1; i <= N; i++) push(x + w - w * i / N, y + h, i + 20);
+  for (let i = 1; i < N; i++) push(x, y + h - h * i / N, i + 30);
+  ctx.beginPath();
+  pts.forEach((p, i) => i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1]));
+  ctx.closePath();
+  if (fill)   { ctx.fillStyle = fill; ctx.fill(); }
+  if (stroke) { ctx.strokeStyle = stroke; ctx.lineWidth = 2; ctx.stroke(); }
+}
+
+function blob(cx, cy, rx, ry, seed) {
+  const q = Math.floor(time * 7), N = 9;
+  ctx.beginPath();
+  for (let i = 0; i <= N; i++) {
+    const a = i / N * Math.PI * 2;
+    const k = 1 + (hash(seed + q * 17 + i) - .5) * 0.18;
+    const x = cx + Math.cos(a) * rx * k, y = cy + Math.sin(a) * ry * k;
+    i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+  }
+  ctx.closePath(); ctx.fill(); ctx.stroke();
+}
+
+function drawSky() {
+  const grd = ctx.createLinearGradient(0, 0, 0, GROUND_Y);
+  grd.addColorStop(0, '#6fc2e8');
+  grd.addColorStop(1, '#bfe9f5');
+  ctx.fillStyle = grd;
+  ctx.fillRect(-60, -60, W + 120, GROUND_Y + 60);
+
+  // sun (low poly, 7 sides, nobody noticed)
+  ctx.save();
+  ctx.translate(W - 62, 66);
+  ctx.rotate(time * 0.12);
+  ctx.fillStyle = hd ? '#fff3a8' : '#ffe14d';
+  ctx.strokeStyle = '#e0a500'; ctx.lineWidth = 2;
+  ctx.beginPath();
+  for (let i = 0; i < 7; i++) {
+    const a = i / 7 * Math.PI * 2;
+    i ? ctx.lineTo(Math.cos(a) * 26, Math.sin(a) * 26) : ctx.moveTo(26, 0);
+  }
+  ctx.closePath(); ctx.fill(); ctx.stroke();
+  ctx.restore();
+
+  // the same cloud four times, at the same height, because assets cost money
+  const cs = (scroll * 0.14) % 150;
+  for (let i = -1; i < 4; i++) cloud(i * 150 - cs + 30, 104);
+}
+
+function cloud(x, y) {
+  ctx.fillStyle = 'rgba(255,255,255,.92)';
+  ctx.strokeStyle = 'rgba(120,150,170,.55)'; ctx.lineWidth = 1.5;
+  blob(x, y, 22, 11, 4242);
+  blob(x + 17, y - 6, 15, 10, 4243);
+  blob(x - 16, y + 2, 12, 8, 4244);
+}
+
+function drawGround() {
+  // overdraws the edges so the intern's camera tilt can't expose bare canvas
+  ctx.fillStyle = '#c9a15b';
+  ctx.fillRect(-60, GROUND_Y, W + 120, H - GROUND_Y + 60);
+  ctx.fillStyle = '#7ac74f';
+  ctx.fillRect(-60, GROUND_Y, W + 120, 11);
+
+  // tiles that do not tile. every 5th one is from a different texture pack.
+  const off = scroll % 26;
+  for (let i = -3; i < W / 26 + 4; i++) {
+    const x = i * 26 - off;
+    const bad = ((i + Math.floor(scroll / 26)) % 5 === 0);
+    ctx.fillStyle = bad ? '#a8743c' : (i % 2 ? '#bd9450' : '#c9a15b');
+    ctx.fillRect(x, GROUND_Y + 11, 25, H - GROUND_Y - 11 + 60);
+    ctx.fillStyle = 'rgba(0,0,0,.14)';
+    ctx.fillRect(x + 24, GROUND_Y + 11, 2, H - GROUND_Y - 11 + 60);
+  }
+  ctx.strokeStyle = '#000'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(-60, GROUND_Y); ctx.lineTo(W + 60, GROUND_Y); ctx.stroke();
+  txt('placeholder_ground.png', W - 6, H - 6, 8, 'rgba(0,0,0,.28)', 'right');
+}
+
+function drawPipes() {
+  const sale = ev && ev.id === 'sale';
+  for (const p of pipes) {
+    const top = p.y - p.gap / 2, bot = p.y + p.gap / 2;
+    const body = sale ? '#e8c33a' : p.kind === 'construction' ? '#e07b2a' : '#5bbf3a';
+    const dark = sale ? '#a8891c' : p.kind === 'construction' ? '#a5521a' : '#3c8a24';
+
+    for (const seg of [[top - 400, 400], [bot, GROUND_Y - bot]]) {
+      const [sy, sh] = seg;
+      if (sh <= 0) continue;
+      wobRect(p.x, sy, PW, sh, p.seed, body, '#153a0d');
+      ctx.fillStyle = 'rgba(255,255,255,.22)';
+      ctx.fillRect(p.x + 7, sy + 2, 7, sh - 4);
+      ctx.fillStyle = dark;
+      ctx.fillRect(p.x + PW - 14, sy + 2, 8, sh - 4);
+      if (p.kind === 'construction') {
+        ctx.save();
+        ctx.beginPath(); ctx.rect(p.x + 2, sy + 2, PW - 4, sh - 4); ctx.clip();
+        ctx.strokeStyle = 'rgba(0,0,0,.55)'; ctx.lineWidth = 7;
+        for (let i = -sh; i < PW + sh; i += 18) {
+          ctx.beginPath(); ctx.moveTo(p.x + i, sy + sh); ctx.lineTo(p.x + i + sh, sy); ctx.stroke();
+        }
+        ctx.restore();
+      }
+    }
+    // lips
+    wobRect(p.x - 5, top - 22, PW + 10, 22, p.seed + 5, body, '#153a0d');
+    wobRect(p.x - 5, bot, PW + 10, 22, p.seed + 9, body, '#153a0d');
+
+    if (p.kind === 'todo') {
+      ctx.save();
+      ctx.translate(p.x + PW / 2, bot + 58); ctx.rotate(-Math.PI / 2);
+      txt('TODO: texture', 0, 0, 11, 'rgba(0,0,0,.5)');
+      ctx.restore();
+    }
+    if (sale) txtS('50% OFF', p.x + PW / 2, top - 30, 11, '#fff');
+    if (p.kind === 'construction') {
+      // a small cone, because safety
+      ctx.fillStyle = '#ff7a18'; ctx.strokeStyle = '#000'; ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(p.x + PW / 2, top - 42); ctx.lineTo(p.x + PW / 2 + 9, top - 24);
+      ctx.lineTo(p.x + PW / 2 - 9, top - 24); ctx.closePath();
+      ctx.fill(); ctx.stroke();
+      ctx.fillStyle = '#fff'; ctx.fillRect(p.x + PW / 2 - 6, top - 32, 12, 3);
+    }
+    drawMouth(p);
+  }
+}
+
+// the business end. inhaling, or preparing to do the opposite.
+function drawMouth(p) {
+  // suction: chevrons crawling INTO the hole. only drawn while actually pulling,
+  // because a pipe that always looks hungry stops reading as a surprise.
+  if (p.suckT > 0) {
+    const a = clamp(p.suckT * 4.4, 0, 0.75);
+    for (const side of [-1, 1]) {
+      const m = mouth(p, side);
+      for (let i = 0; i < 3; i++) {
+        const k = ((time * 2.2 + i / 3) % 1);
+        const d = 12 + k * 30, w = 8 + k * 12;
+        ctx.beginPath();
+        ctx.moveTo(m[0] - w, m[1] + side * (d + 7));
+        ctx.lineTo(m[0],     m[1] + side * d);
+        ctx.lineTo(m[0] + w, m[1] + side * (d + 7));
+        // dark under-stroke, then white: chevrons cross sky AND pipe, and must
+        // read on both. everything in this file is legibility triage.
+        ctx.strokeStyle = 'rgba(0,0,0,' + (a * 0.5) + ')'; ctx.lineWidth = 4.5; ctx.stroke();
+        ctx.strokeStyle = 'rgba(255,255,255,' + a + ')';   ctx.lineWidth = 2;   ctx.stroke();
+      }
+    }
+  }
+  if (p.load <= 0 || p.fired) return;
+
+  // loaded: a bulge in the mouth that is not part of the original pipe design
+  const m = mouth(p, p.lip);
+  const w = p.windup >= 0 ? clamp(p.windup / 0.85, 0, 1) : 0;
+  const j = w > 0 ? (hash((p.seed + Math.floor(time * 30)) | 0) - 0.5) * 5 * w : 0;
+  ctx.save();
+  ctx.translate(m[0] + j, m[1] + j * 0.6);
+  ctx.strokeStyle = '#2e1a08'; ctx.lineWidth = 1.6;
+  const k = 0.7 + w * 0.95;
+  ctx.fillStyle = '#6d4019'; blob(0, p.lip * 3 * k, 7.5 * k, 5 * k, p.seed + 41);
+  ctx.fillStyle = '#7a4a1e'; blob(0, -p.lip * 1 * k, 5.5 * k, 4 * k, p.seed + 42);
+  ctx.restore();
+  // drips, because pressure
+  ctx.fillStyle = 'rgba(109,64,25,.8)';
+  for (let i = 0; i < 2; i++) {
+    const dy = ((time * 34 + i * 17 + p.seed) % 20);
+    ctx.fillRect(m[0] - 7 + i * 11, m[1] + p.lip * (7 + dy), 2.5, 4);
+  }
+  if (w > 0.15) {
+    // the warning. it is a legal requirement in some jurisdictions. painted ON
+    // the lip rather than floating in the gap -- nothing this game draws is
+    // allowed to sit in the corridor you have to fly through.
+    ctx.globalAlpha = 0.5 + Math.abs(Math.sin(time * 14)) * 0.5;
+    ctx.strokeStyle = '#ffe14d'; ctx.lineWidth = 3;
+    ctx.strokeRect(p.x - 5, p.lip > 0 ? p.y + p.gap / 2 : p.y - p.gap / 2 - 22, PW + 10, 22);
+    txtS('!', m[0], m[1] + (p.lip > 0 ? 21 : -8), 22, '#ffe14d');
+    ctx.globalAlpha = 1;
+  }
+}
+
+// return fire, tumbling, with a stink trail so you can read the arc
+function drawShots() {
+  ctx.lineWidth = 1.6;
+  for (const s of shots) {
+    ctx.globalAlpha = 0.28;
+    ctx.fillStyle = '#8a5423';
+    for (let i = 1; i < 4; i++) ctx.fillRect(s.x + i * 6 - 1.5, s.y - i * 1.4 - 1.5, 3, 3);
+    ctx.globalAlpha = 1;
+    ctx.save();
+    ctx.translate(s.x, s.y);
+    ctx.rotate(s.rot);
+    ctx.strokeStyle = '#2e1a08';
+    ctx.fillStyle = '#6d4019'; blob(0, 3.9, 7.6, 4.1, s.seed);
+    ctx.fillStyle = '#7a4a1e'; blob(0.6, -0.7, 5.9, 3.6, s.seed + 1);
+    ctx.fillStyle = '#8a5423'; blob(0, -5.0, 3.9, 3.0, s.seed + 2);
+    ctx.restore();
+  }
+}
+
+// on the camera lens, not on the bird. drawn OUTSIDE the world transform so it
+// sits on the glass, and kept translucent so it can never hide a gap from you.
+function drawLens() {
+  for (const l of lens) {
+    const a = clamp(1 - l.t / 3.4, 0, 1) * 0.62;
+    ctx.globalAlpha = a;
+    ctx.strokeStyle = 'rgba(46,26,8,.5)'; ctx.lineWidth = 1.4;
+    ctx.fillStyle = '#6d4019'; blob(l.x, l.y, l.r, l.r * 0.78, l.seed);
+    ctx.fillStyle = '#8a5423'; blob(l.x - l.r * .25, l.y - l.r * .2, l.r * .45, l.r * .38, l.seed + 4);
+    ctx.fillStyle = '#6d4019';
+    for (let i = 0; i < 5; i++) {
+      const ang = hash(l.seed + i * 7) * 6.28, d = l.r * (1.15 + hash(l.seed + i * 13) * 0.7);
+      blob(l.x + Math.cos(ang) * d, l.y + Math.sin(ang) * d, 2.6, 2.1, l.seed + i + 20);
+    }
+    ctx.globalAlpha = 1;
+  }
+}
+
+function drawPoops() {
+  ctx.lineWidth = 1.6;
+  for (const p of poops) {
+    ctx.save();
+    ctx.translate(p.x, p.y);
+    ctx.rotate(p.rot);
+    const k = p.big ? 1.5 : 1;
+    ctx.strokeStyle = '#2e1a08';
+    if (p.landed) {
+      // splat: flattened, with a couple of stray specks
+      ctx.fillStyle = '#6d4019';
+      blob(0, 0, 9 * p.sq * k, 3.4 * k, p.seed);
+      ctx.fillStyle = '#8a5423';
+      blob(-2.5 * k, -1.8 * k, 4 * k, 2.4 * k, p.seed + 3);
+      ctx.fillStyle = '#6d4019';
+      blob(-9 * p.sq * k, 1.5, 1.8, 1.2, p.seed + 5);
+      blob(9 * p.sq * k, 1.2, 1.5, 1, p.seed + 6);
+    } else {
+      // the classic three-tier coil, tumbling
+      ctx.fillStyle = '#6d4019';
+      blob(0, 3.4 * k, 6.6 * k, 3.6 * k, p.seed);
+      ctx.fillStyle = '#7a4a1e';
+      blob(0.5 * k, -0.6 * k, 5.1 * k, 3.1 * k, p.seed + 1);
+      ctx.fillStyle = '#8a5423';
+      blob(0, -4.4 * k, 3.4 * k, 2.6 * k, p.seed + 2);
+    }
+    ctx.restore();
+  }
+}
+
+function drawBird() {
+  ctx.save();
+  ctx.translate(bird.x, bird.y);
+  const rot = state === S.DEAD ? deadSpin
+            : state === S.MENU ? Math.sin(time * 2.6) * 0.12
+            : clamp(bird.vy / 950, -0.42, 1.05);
+  ctx.rotate(rot);
+
+  // p > 0: pressure building.  p < 0: spent, deflated.  every part reads it
+  // separately -- a single uniform scale just looks like a rendering glitch.
+  const p = bird.press, up = Math.max(0, p), dn = Math.max(0, -p);
+
+  // whole-bird inflate then deflate. the hitbox (drawn outside this transform)
+  // never changes, which is exactly why the ring is worth leaving visible.
+  const s = 1 + p * 0.09;
+  ctx.scale(s, s);
+  ctx.strokeStyle = '#000'; ctx.lineWidth = 2 / s;
+
+  // tail: clamps up as he bears down, flicks down once it's out
+  ctx.save();
+  ctx.rotate(-up * 0.5 + dn * 0.34);
+  ctx.fillStyle = '#ff8a3b';
+  ctx.beginPath(); ctx.moveTo(-11, -1); ctx.lineTo(-24, -8); ctx.lineTo(-22, 6); ctx.closePath();
+  ctx.fill(); ctx.stroke();
+  ctx.restore();
+
+  // wing: tucks tight against the body under strain, splays when spent
+  const wf = Math.sin(bird.wing) * 0.85 * (1 - up * 0.7) - up * 0.45 + dn * 0.3;
+  ctx.save();
+  ctx.translate(-3 + up * 2, 1);
+  ctx.rotate(wf);
+  ctx.scale(1 - up * 0.28 + dn * 0.1, 1 - up * 0.15);
+  ctx.fillStyle = hd ? '#f06cf0' : '#ff00ff';
+  ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(-16, -9); ctx.lineTo(-13, 9); ctx.closePath();
+  ctx.fill(); ctx.stroke();
+  ctx.restore();
+
+  // body: balloons taller and rounder with pressure, goes thin and flat when
+  // empty. flushes toward red as he bears down.
+  const flush = up * up;
+  ctx.fillStyle = 'rgb(' + Math.round(255 - flush * 6) + ','
+                         + Math.round(217 - flush * 96) + ','
+                         + Math.round(59  - flush * 8)  + ')';
+  blob(0, up * 1.5, 14 * (1 + p * 0.05), 11 * (1 + p * 0.24), 900);
+
+  // the load itself: a low bulge that grows while the pressure builds
+  if (up > 0.04) {
+    ctx.fillStyle = 'rgb(' + Math.round(246 - flush * 10) + ','
+                           + Math.round(198 - flush * 86) + ',44)';
+    blob(-2.5, 7 + up * 3.5, 8.5 * up, 6.5 * up, 903);
+  }
+
+  // head: retracts into the shoulders under strain, pops back out after
+  const hx = 6 - up * 2.2 + dn * 1.6, hy = -7 + up * 3.4 - dn * 1.8;
+  ctx.fillStyle = 'rgb(' + Math.round(255 - flush * 4) + ','
+                         + Math.round(217 - flush * 74) + ','
+                         + Math.round(59  - flush * 6)  + ')';
+  blob(hx, hy, 9 * (1 + up * 0.14 - dn * 0.05), 8 * (1 + up * 0.1 - dn * 0.06), 901);
+
+  // cheeks puff out at the top of the strain
+  if (up > 0.35) {
+    ctx.fillStyle = 'rgba(255,150,120,' + ((up - 0.35) * 0.9) + ')';
+    blob(hx + 1, hy + 4, 5 * up, 3.4 * up, 905);
+  }
+
+  // beak, wrong colour, slightly detached. gapes open with the effort.
+  ctx.fillStyle = '#ff7a18';
+  ctx.save();
+  ctx.translate(hx + 6, hy + 2);
+  ctx.rotate(-up * 0.22);
+  ctx.beginPath(); ctx.moveTo(0, -5); ctx.lineTo(14 + up * 3, -1); ctx.lineTo(0, 3); ctx.closePath();
+  ctx.fill(); ctx.stroke();
+  ctx.restore();
+
+  // one enormous eye
+  const ex = hx + 4, ey = hy - 2;
+  ctx.fillStyle = '#fff';
+  ctx.beginPath(); ctx.arc(ex, ey, 6.5 * (1 + dn * 0.18), 0, 7); ctx.fill(); ctx.stroke();
+  const look = clamp(bird.vy / 900, -1, 1);
+  ctx.fillStyle = '#000';
+  if (state === S.DEAD) {                          // x_x
+    ctx.lineWidth = 2 / s;
+    ctx.beginPath();
+    ctx.moveTo(ex - 3, ey - 3); ctx.lineTo(ex + 3, ey + 3);
+    ctx.moveTo(ex + 3, ey - 3); ctx.lineTo(ex - 3, ey + 3);
+    ctx.stroke();
+  } else if (up > 0.3) {                           // screwed shut, mid-effort
+    ctx.lineWidth = 2 / s;
+    ctx.beginPath();
+    ctx.moveTo(ex - 3.5, ey - 2.5); ctx.lineTo(ex + 2, ey); ctx.lineTo(ex - 3.5, ey + 2.5);
+    ctx.stroke();
+  } else if (dn > 0.3) {                           // and then wide, wide open
+    ctx.beginPath(); ctx.arc(ex + 1, ey, 2.1, 0, 7); ctx.fill();
+  } else {
+    ctx.beginPath(); ctx.arc(ex + 1, ey + look * 2.4, 2.6, 0, 7); ctx.fill();
+  }
+
+  // effort lines radiating off the head
+  if (up > 0.4) {
+    ctx.strokeStyle = 'rgba(0,0,0,' + (up * 0.5) + ')'; ctx.lineWidth = 1.6 / s;
+    for (let i = 0; i < 3; i++) {
+      const a = -1.5 + i * 0.55;
+      ctx.beginPath();
+      ctx.moveTo(hx + 2 + Math.cos(a) * 13, hy - 3 + Math.sin(a) * 11);
+      ctx.lineTo(hx + 2 + Math.cos(a) * 19, hy - 3 + Math.sin(a) * 16);
+      ctx.stroke();
+    }
+  }
+  ctx.restore();
+
+  // hitbox, accidentally left enabled in the build. it is also just fair: this is
+  // exactly the circle the collision test uses. dark under-stroke so lime-on-yellow
+  // is actually visible.
+  ctx.setLineDash([4, 3]);
+  ctx.beginPath(); ctx.arc(bird.x, bird.y, bird.r, 0, 7);
+  ctx.strokeStyle = 'rgba(0,0,0,.85)'; ctx.lineWidth = 3.5; ctx.stroke();
+  ctx.strokeStyle = '#4dff5a'; ctx.lineWidth = 1.6; ctx.stroke();
+  ctx.setLineDash([]);
+}
+
+function drawFx() {
+  for (const b of bits) {
+    ctx.globalAlpha = clamp(1.6 - b.t, 0, 1);
+    ctx.fillStyle = b.c;
+    ctx.fillRect(b.x, b.y, b.s, b.s);
+  }
+  ctx.globalAlpha = 1;
+  for (const f of floats) {
+    ctx.globalAlpha = clamp(1.1 - f.t, 0, 1);
+    txtS(f.s, f.x, f.y, f.size, f.c);
+  }
+  ctx.globalAlpha = 1;
+}
+
+// wind you can see, so the drift reads as weather and not as a broken bird
+function drawWind() {
+  if (!ev || ev.id !== 'wind' || Math.abs(windX) < 4) return;
+  const dir = Math.sign(windX);
+  const strength = Math.min(1, Math.abs(windX) / WIND.max);
+  ctx.strokeStyle = 'rgba(255,255,255,' + (0.28 * strength) + ')';
+  ctx.lineWidth = 2;
+  for (let i = 0; i < 9; i++) {
+    const y = ((i * 71 + (hash(i) * 300)) % (GROUND_Y - 40)) + 20;
+    const len = 22 + hash(i + 9) * 40;
+    const x = (W + 60 - ((time * (150 + hash(i + 3) * 160) * dir * -1) % (W + 120)) + W + 120) % (W + 120) - 60;
+    ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + len * dir, y); ctx.stroke();
+  }
+}
+
+function drawDusk() {
+  if (!ev || ev.id !== 'dusk') return;
+  const fade = Math.min(1, Math.min(ev.t, ev.dur - ev.t) / 0.9);
+  const g = ctx.createRadialGradient(bird.x, bird.y, 26, bird.x, bird.y, 240);
+  g.addColorStop(0, 'rgba(8,10,40,0)');
+  g.addColorStop(1, 'rgba(8,10,40,' + (0.5 * fade) + ')');
+  ctx.fillStyle = g;
+  ctx.fillRect(-60, -60, W + 120, H + 120);
+}
+
+function drawHud() {
+  if (state === S.PLAY || state === S.DEAD) {
+    // outlined, because the score has to stay readable on top of a pipe
+    const n = String(Math.round(shownScore));
+    txt(n, W / 2 + 4, 71, 44, 'rgba(0,0,0,.32)');
+    ctx.font = '44px "Comic Sans MS","Chalkboard SE",cursive';
+    ctx.textAlign = 'center';
+    ctx.lineWidth = 5; ctx.strokeStyle = 'rgba(0,0,0,.75)';
+    ctx.strokeText(n, W / 2, 66);
+    ctx.fillStyle = '#fff'; ctx.fillText(n, W / 2, 66);
+    txt('best (probably): ' + best, W / 2, 86, 11, 'rgba(0,0,0,.45)');
+    // running tally, top-left, with a tiny coil for a bullet point
+    ctx.save();
+    ctx.translate(16, 34);
+    ctx.strokeStyle = '#2e1a08'; ctx.lineWidth = 1.4;
+    ctx.fillStyle = '#6d4019'; blob(0, 2, 5, 2.8, 31);
+    ctx.fillStyle = '#7a4a1e'; blob(0, -1.4, 3.8, 2.4, 32);
+    ctx.fillStyle = '#8a5423'; blob(0, -4.2, 2.5, 1.9, 33);
+    ctx.restore();
+    txt('x ' + poopCount, 27, 39, 13, 'rgba(0,0,0,.5)', 'left');
+    // the tracking number. everything in transit is coming back. all of it.
+    if (sewer > 0 || returned > 0) {
+      txt('in transit: ' + sewer + (returned ? '   ·   returned: ' + returned : ''),
+          16, 55, 10.5, 'rgba(80,40,10,.7)', 'left');
+    }
+  }
+  if (ev) {
+    // the banner lives on the dirt, never over the play area -- an opaque bar
+    // across the sky can hide the edge of a gap, which is unfair rather than funny
+    const fade = clamp(Math.min(ev.t / 0.3, (ev.dur - ev.t) / 0.4), 0, 1);
+    const by = GROUND_Y + 16;
+    ctx.globalAlpha = fade;
+    ctx.fillStyle = 'rgba(16,18,24,.82)';
+    ctx.fillRect(0, by, W, 40);
+    ctx.fillStyle = '#ffe14d';
+    ctx.fillRect(0, by, W, 2); ctx.fillRect(0, by + 38, W, 2);
+    txt(ev.name, W / 2, by + 19, 13, '#ffe14d');
+    txt(ev.sub + '  —  this is a feature', W / 2, by + 33, 9.5, 'rgba(255,255,255,.72)');
+    ctx.globalAlpha = 1;
+  }
+}
+
+function drawBoot() {
+  ctx.fillStyle = '#0d0d0f'; ctx.fillRect(0, 0, W, H);
+  const lines = [
+    'loading bird…',
+    'loading pipes…',
+    'loading pipes… (again)',
+    'reticulating splines',
+    'downloading more fps',
+    'compiling shaders (there are none)',
+    'done? done.',
+  ];
+  txt(lines[Math.min(lines.length - 1, Math.floor(bootT / 0.35))], W / 2, H / 2 - 28, 14, '#8bffb0');
+
+  // progress bar with an authentic stall
+  const t = bootT;
+  const pct = t < 0.5 ? t / 0.5 * 0.31
+            : t < 1.9 ? 0.31 + (t - 0.5) * 0.006
+            : Math.min(1, 0.32 + (t - 1.9) * 1.4);
+  ctx.strokeStyle = '#3a3a44'; ctx.lineWidth = 2;
+  ctx.strokeRect(W / 2 - 110, H / 2, 220, 16);
+  ctx.fillStyle = '#8bffb0';
+  ctx.fillRect(W / 2 - 108, H / 2 + 2, 216 * pct, 12);
+  txt(Math.round(pct * 100) + '%', W / 2, H / 2 + 34, 11, '#6b6b78');
+  txt('0 assets loaded of 0', W / 2, H / 2 + 52, 10, '#4a4a55');
+  if (bootT > 1.2) txt('tap to skip (rude, but valid)', W / 2, H - 40, 10, '#4a4a55');
+}
+
+function drawMenu() {
+  // title, letter by letter, each rotated by a different intern
+  const word = 'CRAPPY BIRD';
+  ctx.save();
+  ctx.translate(W / 2, 178);
+  let total = 0;
+  ctx.font = '34px "Comic Sans MS","Chalkboard SE",cursive';
+  for (const ch of word) total += ctx.measureText(ch).width + 1;
+  let x = -total / 2;
+  for (let i = 0; i < word.length; i++) {
+    const ch = word[i], w = ctx.measureText(ch).width;
+    ctx.save();
+    ctx.translate(x + w / 2, Math.sin(time * 1.6 + i) * 3);
+    ctx.rotate((hash(i * 13) - 0.5) * 0.34);
+    txt(ch, 3, 4, 34, 'rgba(0,0,0,.35)');
+    txt(ch, 0, 0, 34, i % 2 ? '#ffe14d' : '#fff');
+    ctx.restore();
+    x += w + 1;
+  }
+  ctx.restore();
+
+  txt('he flaps. he craps. that is the deal.', W / 2, 204, 12, 'rgba(0,0,0,.5)');
+
+  const pulse = 0.6 + Math.abs(Math.sin(time * 3)) * 0.4;
+  ctx.globalAlpha = pulse;
+  txtS('TAP  or  SPACE  to flap', W / 2, H - 168, 18, '#fff');
+  ctx.globalAlpha = 1;
+  txt('every flap takes something out of him', W / 2, H - 142, 11, 'rgba(0,0,0,.5)');
+  txt('NEW: the pipes have plumbing, and the plumbing has memory', W / 2, H - 126, 10.5, 'rgba(120,60,10,.7)');
+  txt('best: ' + best + '  ·  deposits: ' + poopTotal + '  ·  returned to sender: ' + returnedTotal, W / 2, H - 108, 10.5, 'rgba(0,0,0,.45)');
+}
+
+function drawDead() {
+  if (deadT < 0.45) return;
+  const a = clamp((deadT - 0.45) / 0.25, 0, 1);
+  ctx.globalAlpha = a;
+
+  const py = 150, ph = 250;
+  ctx.save();
+  ctx.translate(W / 2, py + ph / 2);
+  ctx.rotate(-0.015);
+  ctx.translate(-W / 2, -(py + ph / 2));
+  wobRect(30, py, W - 60, ph, 777, '#fffbe6', '#000', 1.6);
+  ctx.restore();
+
+  txtS('GAME OVER', W / 2, py + 44, 28, '#c0392b');
+  txt(deathMsg, W / 2, py + 70, 11.5, '#333');
+
+  txt('score: ' + score + (scoreVerified ? ' (verified)' : ' (unverified)'), W / 2, py + 106, 15, '#111');
+  txt('best: ' + best + (score >= best && score > 0 ? '  ← new! congrats i guess' : ''), W / 2, py + 128, 12, '#555');
+  txt('deposits this run: ' + poopCount + '   ·   all time: ' + poopTotal, W / 2, py + 145, 10, '#888');
+  txt(returned ? 'returned by the pipes: ' + returned + ' (delivery successful)'
+               : 'returned by the pipes: 0 (they are still holding ' + sewer + ')',
+      W / 2, py + 157, 10, '#a07a4a');
+
+  BTN_BUY.y = py + 162;
+  wobRect(BTN_BUY.x, BTN_BUY.y, BTN_BUY.w, BTN_BUY.h, 555, '#ffd93b', '#000', 1.2);
+  txt('CONTINUE — $0.99', W / 2, BTN_BUY.y + 20, 13, '#111');
+  txt('(does nothing. restarts anyway.)', W / 2, BTN_BUY.y + 43, 9.5, '#999');
+
+  const pulse = 0.55 + Math.abs(Math.sin(time * 3)) * 0.45;
+  ctx.globalAlpha = a * pulse;
+  txt('tap anywhere / space to retry', W / 2, py + ph - 14, 12.5, '#111');
+  ctx.globalAlpha = 1;
+}
+
+function render() {
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  ctx.scale(dpr, dpr);
+  ctx.clearRect(0, 0, W, H);
+
+  if (state === S.BOOT) { drawBoot(); return; }
+
+  // camera: shake + intern tilt. rotates the WHOLE world including the bird,
+  // so what you see stays honest -- just crooked.
+  ctx.save();
+  const sx = (Math.random() - .5) * shake, sy = (Math.random() - .5) * shake;
+  ctx.translate(W / 2 + sx, H / 2 + sy);
+  ctx.rotate(tilt);
+  ctx.translate(-W / 2, -H / 2);
+
+  drawSky();
+  drawPipes();
+  drawGround();
+  drawPoops();
+  drawShots();
+  drawBird();
+  drawWind();
+  drawFx();
+  drawDusk();
+  ctx.restore();
+
+  drawLens();          // on the glass, above the tilt, below the paperwork
+  drawHud();
+  if (state === S.MENU) drawMenu();
+  if (state === S.DEAD) drawDead();
+}
+
+/* -------------------------------------------------------------- main loop */
+let last = 0, acc = 0;
+const STEP = 1 / 120;
+function frame(ts) {
+  if (!last) last = ts;
+  let dt = (ts - last) / 1000;
+  last = ts;
+  acc += Math.min(dt, 0.25);
+  let guard = 0;
+  while (acc >= STEP && guard++ < 40) { update(STEP); acc -= STEP; }
+  render();
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+addEventListener('blur', () => { last = 0; acc = 0; });
+
+/* --------------------------------------------------------- the ugly chrome */
+const muteBtn = document.getElementById('mute');
+muteBtn.onclick = () => { muteBtn.textContent = 'sound: ' + (Sound.toggle() ? 'on' : 'off'); };
+muteBtn.textContent = 'sound: ' + (Sound.on ? 'on' : 'off');
+
+const BUGS = [
+  'bug received. reclassified as a feature.',
+  'wontfix',
+  'cannot reproduce (we did not try)',
+  'assigned to: nobody',
+  'closed as duplicate of: the game',
+  'thank you. this went nowhere.',
+  'our engineer read it and sighed.',
+];
+let bugI = 0;
+document.getElementById('bug').onclick = () => { toast(BUGS[bugI % BUGS.length]); bugI++; };
+
+const gfx = document.getElementById('goodgfx');
+let gfxTries = 0;
+gfx.onchange = () => {
+  if (!gfx.checked) return;
+  gfxTries++;
+  if (gfxTries < 3) {
+    gfx.checked = false;
+    toast(['good graphics are not included in this build.',
+           'still no.',
+           ][Math.min(1, gfxTries - 1)]);
+  } else {
+    hd = true;
+    document.getElementById('hdbadge').classList.add('on');
+    toast('fine. HD enabled. (it is a badge)', 3200);
+  }
+};
+
+const ad = document.getElementById('ad');
+const AD_LINES = ['you already have a bird.', 'no more birds.', 'we have run out of birds.', 'the bird is asking for space.'];
+let adI = 0;
+ad.onclick = () => {
+  toast(AD_LINES[Math.min(adI, AD_LINES.length - 1)]);
+  if (++adI === AD_LINES.length) ad.querySelector('span').textContent = '▸ we have run out of ads. thank you for clicking. ▸';
+};
+
+// handshake with the hosting shell, if any. harmless when standalone.
+try {
+  window.dispatchEvent(new CustomEvent('crappy-bird:ready'));
+  if (window.parent !== window) {
+    window.parent.postMessage({ type: 'crappy-bird:ready' }, '*');
+  }
+} catch (e) { /* also freedom */ }
+
+console.log('%ccrappy bird v0.0.4-alpha', 'font-size:16px;color:#ff00ff');
+console.log('known issues:\n  - the wing is the wrong colour\n  - the hitbox is visible\n  - the bird has one eye\n  - the bird defecates when it flaps\n  - the pipes are all connected to each other\n  - we do not know who connected them\n  - all of the above are intentional now');
+</script>
+</body>
+</html>
