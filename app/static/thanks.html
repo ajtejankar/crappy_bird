@@ -89,6 +89,7 @@
 "use strict";
 const $ = id => document.getElementById(id);
 const sessionId = new URLSearchParams(location.search).get('session_id');
+const CLAIM = __CLAIM__;  // resolved server-side before this page was sent
 
 const VERDICTS = [
   [100, 'the legal minimum. noted.'],
@@ -100,27 +101,25 @@ const VERDICTS = [
 
 let creditsLeft = 0;
 
-async function load(attempt = 0) {
-  if (!sessionId) { $('status').textContent = 'no payment session found. how did you get here?'; return; }
-  try {
-    const r = await fetch('/api/claim?session_id=' + encodeURIComponent(sessionId));
-    if (!r.ok) throw new Error((await r.json()).detail || 'unknown payment');
-    const j = await r.json();
-    $('r-amount').textContent = '$' + (j.amount_cents/100).toFixed(2);
-    $('r-credits').textContent = j.credits + (j.credits === 1 ? ' idea' : ' ideas');
-    let v = 'acceptable';
-    for (const [amt, text] of VERDICTS) if (j.amount_cents >= amt) v = text;
-    $('r-verdict').textContent = v;
-    creditsLeft = j.credits_left;
-    renderLeft();
-  } catch (err) {
-    if (attempt < 5) {  // webhook race: stripe redirected before the webhook landed
-      $('status').textContent = 'verifying with the money tube… (' + (attempt+1) + ')';
-      setTimeout(() => load(attempt + 1), 1500);
-    } else {
-      $('status').textContent = String(err.message || err);
-    }
+function load() {
+  if (!CLAIM) {
+    $('r-amount').textContent = '—';
+    $('r-credits').textContent = '—';
+    $('r-verdict').textContent = 'no tribute on file';
+    $('paid').firstElementChild.textContent = 'UNPAID';
+    $('status').textContent = sessionId
+      ? 'no payment found for this receipt. if your card was just charged, refresh in a few seconds.'
+      : 'no payment session found. how did you get here?';
+    $('submit').disabled = true;
+    return;
   }
+  $('r-amount').textContent = '$' + (CLAIM.amount_cents/100).toFixed(2);
+  $('r-credits').textContent = CLAIM.credits + (CLAIM.credits === 1 ? ' idea' : ' ideas');
+  let v = 'acceptable';
+  for (const [amt, text] of VERDICTS) if (CLAIM.amount_cents >= amt) v = text;
+  $('r-verdict').textContent = v;
+  creditsLeft = CLAIM.credits_left;
+  renderLeft();
 }
 
 function renderLeft() {

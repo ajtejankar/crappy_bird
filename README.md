@@ -82,10 +82,12 @@ You need four accounts: GitHub, Anthropic, Stripe, Fly.io. Budget ~45 minutes.
 2. Generate the shared secret the app and workflow use to talk:
    `openssl rand -hex 32` → this is **AGENT_TOKEN**. Keep it handy.
 3. Create a **fine-grained PAT** (Settings → Developer settings → Fine-grained
-   tokens) scoped to *only this repo*, with permissions:
-   - **Contents: Read** (the dispatch API requires repo read)
-   - **Actions: Read and write** (to dispatch the workflow)
-   This is **GITHUB_PAT** — the web app uses it to wake the developer.
+   tokens) scoped to *only this repo*, with one permission:
+   - **Actions: Read and write** (to start the dev-cycle workflow via the
+     `workflow_dispatch` API — deliberately *not* `repository_dispatch`, which
+     would require Contents: write and hand the web app push rights)
+   This is **GITHUB_PAT** — the web app uses it to wake the developer, and it
+   can do nothing else.
 4. In the repo: Settings → Secrets and variables → **Actions** → add secrets:
    - `ANTHROPIC_API_KEY` — from step 2 below
    - `AGENT_TOKEN` — from 1.2

@@ -123,8 +123,11 @@ async def shell():
 
 
 @app.get("/thanks", response_class=HTMLResponse)
-async def thanks():
-    return _static("thanks.html")
+async def thanks(session_id: str = ""):
+    # resolve the payment BEFORE the page renders — the payer never sees a
+    # spinner, a retry loop, or a raw API error. null means "no tribute found".
+    claim = _claim(session_id)
+    return HTMLResponse(THANKS_TEMPLATE.replace("__CLAIM__", json.dumps(claim)))
 
 
 @app.get("/ideas", response_class=HTMLResponse)
@@ -138,6 +141,7 @@ async def changelog_page():
 
 
 LANDLORD_TEMPLATE = (STATIC_DIR / "landlord.html").read_text()
+THANKS_TEMPLATE = (STATIC_DIR / "thanks.html").read_text()
 
 
 def _inject_landlord(game_html: str, version: int) -> str:
@@ -344,10 +348,12 @@ async def stripe_webhook(request: Request, stripe_signature: str = Header(None))
     return {"received": True}
 
 
-@app.get("/api/claim")
-async def claim(session_id: str):
-    """Called by the thanks page. Falls back to asking Stripe directly if the
-    webhook hasn't landed yet, so payers are never stuck staring at a spinner."""
+def _claim(session_id: str) -> dict | None:
+    """Resolve a checkout session to receipt data. Asks Stripe directly if the
+    webhook hasn't landed yet (registering the payment as a side effect), so
+    the answer is authoritative the moment Stripe redirects the payer back."""
+    if not session_id:
+        return None
     pay = db.payment_by_session(session_id)
     if pay is None and not DEV_MODE and session_id.startswith("cs_"):
         import stripe
@@ -355,18 +361,26 @@ async def claim(session_id: str):
         try:
             session = stripe.checkout.Session.retrieve(session_id)
         except stripe.error.StripeError:
-            raise HTTPException(404, "unknown payment")
+            return None
         if getattr(session, "payment_status", None) == "paid":
             _register_paid_session(session["id"], int(session["amount_total"]),
                                    getattr(session, "payment_intent", None))
             pay = db.payment_by_session(session_id)
     if pay is None:
-        raise HTTPException(404, "unknown payment")
+        return None
     return {
         "amount_cents": pay["amount_cents"],
         "credits": pay["credits"],
         "credits_left": pay["credits"] - pay["credits_used"],
     }
+
+
+@app.get("/api/claim")
+async def claim(session_id: str):
+    data = _claim(session_id)
+    if data is None:
+        raise HTTPException(404, "unknown payment")
+    return data
 
 
 _CONTROL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
@@ -391,6 +405,22 @@ async def submit_idea(request: Request):
 
 # ---------------------------------------------------- the dev-cycle trigger
 
+def _dispatch_dev_cycle() -> httpx.Response:
+    # workflow_dispatch, not repository_dispatch: the latter requires a PAT
+    # with Contents: write. This runs on Actions: write alone, so the
+    # internet-facing app holds a token that can start the developer but
+    # can never write to the repo.
+    return httpx.post(
+        f"https://api.github.com/repos/{GITHUB_REPO}/actions/workflows/develop.yml/dispatches",
+        headers={
+            "Authorization": f"Bearer {GITHUB_PAT}",
+            "Accept": "application/vnd.github+json",
+        },
+        json={"ref": GITHUB_BRANCH},
+        timeout=15,
+    )
+
+
 def maybe_trigger_dev_cycle() -> None:
     pot = db.pot_cents()
     pending = len(db.pending_ideas())
@@ -410,15 +440,7 @@ def maybe_trigger_dev_cycle() -> None:
         return
     db.create_run()
     try:
-        r = httpx.post(
-            f"https://api.github.com/repos/{GITHUB_REPO}/dispatches",
-            headers={
-                "Authorization": f"Bearer {GITHUB_PAT}",
-                "Accept": "application/vnd.github+json",
-            },
-            json={"event_type": "fund-goal-reached"},
-            timeout=15,
-        )
+        r = _dispatch_dev_cycle()
         r.raise_for_status()
         log.info("THE DEVELOPER AWAKENS (pot $%.2f, %d ideas pending)", pot / 100, pending)
     except httpx.HTTPError as e:
@@ -477,12 +499,7 @@ async def admin_trigger(authorization: str = Header(None)):
     if not (GITHUB_REPO and GITHUB_PAT):
         raise HTTPException(400, "GITHUB_REPO/GITHUB_PAT not configured")
     db.create_run()
-    r = httpx.post(
-        f"https://api.github.com/repos/{GITHUB_REPO}/dispatches",
-        headers={"Authorization": f"Bearer {GITHUB_PAT}", "Accept": "application/vnd.github+json"},
-        json={"event_type": "fund-goal-reached"},
-        timeout=15,
-    )
+    r = _dispatch_dev_cycle()
     if r.status_code >= 300:
         db.complete_run("failed", None, None, 0, f"manual dispatch failed: HTTP {r.status_code}")
         raise HTTPException(502, f"github said {r.status_code}")
