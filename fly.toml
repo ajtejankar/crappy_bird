@@ -8,7 +8,8 @@ primary_region = "sjc"
 [env]
   DB_PATH = "/data/crappy.db"
   GITHUB_BRANCH = "main"
-  # Set APP_BASE_URL, GITHUB_REPO here after launch; secrets go via `fly secrets set`.
+  GITHUB_REPO = "ajtejankar/crappy_bird"
+  APP_BASE_URL = "https://crappy-bird.fly.dev"
 
 [http_service]
   internal_port = 8080

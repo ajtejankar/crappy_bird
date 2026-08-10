@@ -282,16 +282,41 @@ async def checkout(amount_cents: int):
     return RedirectResponse(session.url, status_code=303)
 
 
-def _net_cents(amount_cents: int) -> int:
-    """Estimated post-Stripe-fee revenue (2.9% + 30c). Reconciled by nobody."""
+def _estimated_net_cents(amount_cents: int) -> int:
+    """Fallback estimate of post-Stripe-fee revenue (2.9% + 30c)."""
     return max(0, amount_cents - round(amount_cents * 0.029) - 30)
 
 
-def _register_paid_session(session_id: str, amount_cents: int) -> None:
+def _actual_net_cents(payment_intent_id: str | None) -> int | None:
+    """The charge's real net from Stripe's balance transaction — exact fees,
+    international surcharges included. None if it can't be determined."""
+    if DEV_MODE or not payment_intent_id:
+        return None
+    import stripe
+    stripe.api_key = STRIPE_SECRET_KEY
+    try:
+        pi = stripe.PaymentIntent.retrieve(
+            payment_intent_id, expand=["latest_charge.balance_transaction"]
+        )
+        charge = getattr(pi, "latest_charge", None)
+        bt = getattr(charge, "balance_transaction", None) if charge else None
+        net = getattr(bt, "net", None) if bt else None
+        return int(net) if net and net > 0 else None
+    except stripe.error.StripeError as e:
+        log.warning("balance transaction lookup failed for %s: %s", payment_intent_id, e)
+        return None
+
+
+def _register_paid_session(session_id: str, amount_cents: int,
+                           payment_intent_id: str | None = None) -> None:
+    net = _actual_net_cents(payment_intent_id)
+    if net is None:
+        net = _estimated_net_cents(amount_cents)
     credits = amount_cents // 100
-    inserted = db.record_payment(session_id, amount_cents, _net_cents(amount_cents), credits)
+    inserted = db.record_payment(session_id, amount_cents, net, credits)
     if inserted:
-        log.info("payment %s: $%.2f -> %d idea credits", session_id, amount_cents / 100, credits)
+        log.info("payment %s: $%.2f gross / $%.2f net -> %d idea credits",
+                 session_id, amount_cents / 100, net / 100, credits)
         maybe_trigger_dev_cycle()
 
 
@@ -309,7 +334,8 @@ async def stripe_webhook(request: Request, stripe_signature: str = Header(None))
     if event["type"] == "checkout.session.completed":
         session = event["data"]["object"]
         if session.get("payment_status") == "paid":
-            _register_paid_session(session["id"], int(session["amount_total"]))
+            _register_paid_session(session["id"], int(session["amount_total"]),
+                                   session.get("payment_intent"))
     return {"received": True}
 
 
@@ -326,7 +352,8 @@ async def claim(session_id: str):
         except stripe.error.StripeError:
             raise HTTPException(404, "unknown payment")
         if session.get("payment_status") == "paid":
-            _register_paid_session(session["id"], int(session["amount_total"]))
+            _register_paid_session(session["id"], int(session["amount_total"]),
+                                   session.get("payment_intent"))
             pay = db.payment_by_session(session_id)
     if pay is None:
         raise HTTPException(404, "unknown payment")
