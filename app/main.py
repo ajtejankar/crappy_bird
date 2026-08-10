@@ -337,9 +337,10 @@ async def stripe_webhook(request: Request, stripe_signature: str = Header(None))
 
     if event["type"] == "checkout.session.completed":
         session = event["data"]["object"]
-        if session.get("payment_status") == "paid":
+        # StripeObject supports [] but not dict-style .get()
+        if getattr(session, "payment_status", None) == "paid":
             _register_paid_session(session["id"], int(session["amount_total"]),
-                                   session.get("payment_intent"))
+                                   getattr(session, "payment_intent", None))
     return {"received": True}
 
 
@@ -355,9 +356,9 @@ async def claim(session_id: str):
             session = stripe.checkout.Session.retrieve(session_id)
         except stripe.error.StripeError:
             raise HTTPException(404, "unknown payment")
-        if session.get("payment_status") == "paid":
+        if getattr(session, "payment_status", None) == "paid":
             _register_paid_session(session["id"], int(session["amount_total"]),
-                                   session.get("payment_intent"))
+                                   getattr(session, "payment_intent", None))
             pay = db.payment_by_session(session_id)
     if pay is None:
         raise HTTPException(404, "unknown payment")
