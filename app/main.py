@@ -261,6 +261,10 @@ async def checkout(amount_cents: int):
     ideas = amount // 100
     session = stripe.checkout.Session.create(
         mode="payment",
+        # Stripe enables Managed Payments (merchant-of-record, +3.5% fee, tax
+        # codes required) by default on new accounts. We declined it; make that
+        # stick per-session so inline price_data works at standard fees.
+        managed_payments={"enabled": False},
         line_items=[{
             "quantity": 1,
             "price_data": {
