@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>crappy bird: extortion edition</title>
+<title>crappy bird</title>
 <style>
   :root { --crap:#ff00ff; --gold:#ffe14d; --paper:#fffbe6; --ink:#101010; }
   * { box-sizing:border-box; }
@@ -18,45 +18,63 @@
   @media (max-height: 540px) { body { overflow:auto; } }
 
   #main { flex:1; display:flex; flex-direction:column; align-items:center;
-    justify-content:center; gap:clamp(8px, 2.2vh, 18px); padding:10px 14px 42px; min-height:0; }
+    justify-content:center; gap:clamp(6px, 1.6vh, 14px); padding:8px 14px 40px; min-height:0; }
 
   header { text-align:center; }
-  #title { font-size:clamp(30px, 6.5vh, 52px); letter-spacing:1px; margin:0; line-height:1.05; }
+  #title { font-size:clamp(28px, 6vh, 48px); letter-spacing:1px; margin:0; line-height:1.02; }
   #title .a { color:#fff; } #title .b { color:var(--gold); }
-  #edition { display:inline-block; margin-top:4px; padding:2px 10px;
-    background:var(--crap); color:#fff; font-size:clamp(10px, 1.8vh, 13px); letter-spacing:2px;
-    border:2px solid #000; transform:rotate(-2deg); box-shadow:3px 3px 0 rgba(0,0,0,.5); }
-  #tagline { font-size:clamp(10px, 1.9vh, 13px); opacity:.6; margin-top:6px; }
+  #tagline { font-size:clamp(10px, 1.8vh, 12.5px); opacity:.6; margin-top:4px; }
 
-  #chest { border:3px solid #000; background:#151923; box-shadow:6px 6px 0 rgba(0,0,0,.45);
-    padding:10px 16px; width:min(94vw, 560px); }
-  #chest h2 { margin:0 0 6px; font-size:clamp(11px, 1.9vh, 13px); letter-spacing:1.5px; color:var(--gold); }
-  #chest h2 small { color:var(--paper); opacity:.55; letter-spacing:0; font-weight:normal; }
-  #barbox { border:2px solid #000; background:#0a0c10; height:clamp(20px, 3.6vh, 26px); position:relative; }
-  #bar { height:100%; width:0%; background:linear-gradient(90deg,#2f7d32,#7ac74f); transition:width .8s; }
-  #bar.hot { background:linear-gradient(90deg,#c0392b,var(--crap)); }
-  #barlabel { position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
-    font-size:clamp(10px, 1.8vh, 12px); text-shadow:1px 1px 0 #000; }
-  #devstate { font-size:clamp(10px, 1.8vh, 11.5px); margin-top:6px; opacity:.85; min-height:14px; }
+  #nowshowing { border:3px solid #000; background:#151923; box-shadow:6px 6px 0 rgba(0,0,0,.45);
+    padding:8px 16px; width:min(94vw, 720px); text-align:center; }
+  #nowshowing .marquee { font-size:clamp(13px, 2.6vh, 19px); letter-spacing:1px; color:var(--gold); }
+  #nowshowing .standing { font-size:clamp(10px, 1.8vh, 12px); opacity:.8; margin-top:3px; }
+  #rerunflag { display:none; margin-top:4px; font-size:clamp(9px, 1.7vh, 11px);
+    color:#0b0d12; background:var(--gold); padding:1px 8px; border:2px solid #000;
+    transform:rotate(-1deg); }
+
+  #grid { display:flex; gap:12px; width:min(94vw, 720px); min-height:0; flex:0 1 auto; }
+  .box { border:3px solid #000; background:#151923; box-shadow:6px 6px 0 rgba(0,0,0,.45);
+    padding:8px 12px; flex:1; min-width:0; display:flex; flex-direction:column; min-height:0; }
+  .box h2 { margin:0 0 5px; font-size:clamp(10px, 1.8vh, 12px); letter-spacing:1.5px; color:var(--gold); }
+  .box h2 small { color:var(--paper); opacity:.55; letter-spacing:0; font-weight:normal; }
+
+  #devbox { max-width:46%; }
+  #devstate { font-size:clamp(10px, 1.8vh, 11.5px); opacity:.9; }
   #devstate .dot { display:inline-block; width:8px; height:8px; border-radius:50%;
     background:#555; margin-right:6px; }
   #devstate.awake .dot { background:#ff3b3b; animation:blink 1s infinite; }
   @keyframes blink { 50% { opacity:.2; } }
-  #chestmeta { display:flex; gap:14px; flex-wrap:wrap; justify-content:center;
-    font-size:clamp(9px, 1.7vh, 11px); opacity:.6; margin-top:6px; }
+  #devmeta { font-size:clamp(9px, 1.6vh, 10.5px); opacity:.55; margin-top:4px; }
+  #hypo { font-size:clamp(9px, 1.7vh, 11px); opacity:.8; margin-top:6px; border-top:1px dashed #333;
+    padding-top:5px; overflow:hidden; }
+  #hypo b { color:var(--gold); font-weight:normal; }
+  #devbox a { color:var(--gold); }
+
+  #pilebox { }
+  #pile { flex:1; overflow:auto; min-height:34px; max-height:16vh; border:2px solid #000;
+    background:#0a0c10; font-size:clamp(9.5px, 1.7vh, 11px); }
+  .idea { padding:4px 8px; border-bottom:1px solid #1c2029; display:flex; gap:8px; }
+  .idea .v { color:var(--gold); flex:none; min-width:34px; text-align:right; }
+  .idea .t { opacity:.85; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .idea.done .t { text-decoration:line-through; opacity:.4; }
+  .idea.dead .t { opacity:.4; }
+  .idea .flag { flex:none; font-size:9px; color:#888; }
+  #pilemeta { font-size:clamp(9px, 1.6vh, 10px); opacity:.5; margin-top:4px; }
 
   #start { font-family:inherit; cursor:pointer; display:block;
-    font-size:clamp(20px, 4.2vh, 32px); font-weight:bold; letter-spacing:1px;
+    font-size:clamp(20px, 4vh, 30px); font-weight:bold; letter-spacing:1px;
     background:var(--gold); color:var(--ink); border:4px solid #000;
-    box-shadow:7px 7px 0 rgba(0,0,0,.5); padding:clamp(10px,2.4vh,18px) clamp(28px,6vw,54px);
+    box-shadow:7px 7px 0 rgba(0,0,0,.5); padding:clamp(8px,2vh,15px) clamp(26px,6vw,50px);
     transform:rotate(-1deg); transition:transform .12s; text-decoration:none; }
   #start:hover { transform:rotate(1deg) scale(1.03); }
   #start:active { transform:translate(3px,3px); box-shadow:3px 3px 0 rgba(0,0,0,.5); }
-  #startsub { text-align:center; font-size:clamp(9px, 1.7vh, 11px); opacity:.5; margin-top:8px; }
+  #startsub { text-align:center; font-size:clamp(9px, 1.6vh, 10.5px); opacity:.5; margin-top:6px; }
 
-  nav { font-size:clamp(11px, 2vh, 13px); opacity:.85; }
+  nav { font-size:clamp(10px, 1.9vh, 12.5px); opacity:.85; }
   nav a { color:var(--gold); } nav .sep { opacity:.4; padding:0 8px; }
-  #legal { font-size:clamp(9px, 1.6vh, 10.5px); opacity:.45; text-align:center; line-height:1.6; }
+  #truth { font-size:clamp(9px, 1.6vh, 10.5px); opacity:.5; text-align:center; line-height:1.55;
+    max-width:640px; }
 
   #ticker { position:fixed; left:0; right:0; bottom:0; background:#000; color:var(--gold);
     border-top:2px solid var(--gold); font-size:12px; padding:5px 0; overflow:hidden;
@@ -70,43 +88,49 @@
 </style>
 </head>
 <body>
-<div id="devbadge">DEV MODE — money is fake, regret is real</div>
+<div id="devbadge">DEV MODE — the developer is imaginary</div>
 
 <div id="main">
   <header>
     <h1 id="title"><span class="a">CRAPPY&nbsp;</span><span class="b">BIRD</span></h1>
-    <div id="edition">EXTORTION EDITION</div>
-    <div id="tagline">a game that funds its own decline. every dollar makes it worse, on purpose, forever.</div>
+    <div id="tagline">a show about a bird. rewritten by a machine. governed by your stamps.</div>
   </header>
 
-  <div id="chest">
-    <h2>THE WAR CHEST <small id="chestver"></small></h2>
-    <div id="barbox">
-      <div id="bar"></div>
-      <div id="barlabel">$0.00 / $10.00</div>
+  <div id="nowshowing">
+    <div class="marquee">NOW SHOWING: <span id="ns-line">…</span></div>
+    <div class="standing" id="ns-standing">consulting the ledger…</div>
+    <div id="rerunflag"></div>
+  </div>
+
+  <div id="grid">
+    <div class="box" id="devbox">
+      <h2>THE DEVELOPER</h2>
+      <div id="devstate"><span class="dot"></span><span id="devtext">…</span></div>
+      <div id="devmeta"></div>
+      <div id="hypo"></div>
     </div>
-    <div id="devstate"><span class="dot"></span><span id="devtext">consulting the ledger…</span></div>
-    <div id="chestmeta">
-      <span id="m-ideas">ideas in the pile: …</span>
-      <span id="m-shipped">features shipped by AI: …</span>
-      <span id="m-burned">money incinerated: …</span>
+    <div class="box" id="pilebox">
+      <h2>THE IDEA PILE <small id="pilecount"></small></h2>
+      <div id="pile"></div>
+      <div id="pilemeta">ideas are submitted at the death screen, by the qualified dead.</div>
     </div>
   </div>
 
   <div>
     <a id="start" href="/play">START CRAPPING</a>
-    <div id="startsub">space or tap to flap. dying is free*. (*usually)</div>
+    <div id="startsub">space or tap to flap. die enough and you get a vote.</div>
   </div>
 
   <nav>
     <a href="/download">download the game</a><span class="sep">·</span>
-    <a href="/ideas">the idea pile</a><span class="sep">·</span>
+    <a href="/versions">the versions</a><span class="sep">·</span>
     <a href="/changelog">development log</a>
   </nav>
 
-  <div id="legal">
-    the download never begs — the begging is a hosting exclusive.<br>
-    100% of profits are fed to an unsupervised AI that makes this game worse. this is the business model.
+  <div id="truth">
+    this game is rewritten by an AI that answers to your votes and your laughter.
+    it cannot want your money or your time. it can only want your amusement.
+    the show must go on.
   </div>
 </div>
 
@@ -116,45 +140,83 @@
 "use strict";
 const $ = id => document.getElementById(id);
 
-const DEVSTATES = {
-  asleep:  ['the developer is asleep. it dreams in JavaScript.',
-            'the developer sleeps. the pot is not yet worth waking up for.',
-            'developer status: unconscious (cost-saving measure)'],
-  stirring:['the developer stirs… it can smell the money.',
-            'the developer is half awake and already has bad ideas.'],
-  awake:   ['THE DEVELOPER IS AWAKE AND WRITING CODE. NOBODY IS SUPERVISING IT.',
-            'compiling… the bird\'s fate is being decided by an enthusiastic machine.'],
-};
+function pct(x) { return x == null ? '—' : Math.round(x * 100) + '%'; }
 
 async function refreshState() {
   let s;
   try { s = await (await fetch('/api/state')).json(); } catch (e) { return; }
-  const pct = Math.max(0, Math.min(100, s.pot_cents / s.threshold_cents * 100));
-  $('bar').style.width = pct + '%';
-  $('bar').classList.toggle('hot', pct >= 80 || s.developing);
-  $('barlabel').textContent = '$' + (s.pot_cents/100).toFixed(2) + ' / $' +
-    (s.threshold_cents/100).toFixed(2) + (s.pot_cents >= s.threshold_cents ? '  — FUNDED' : '');
-  $('chestver').textContent = '— funding v' + (s.version + 1) + ' of the game';
-  $('m-ideas').textContent = 'ideas in the pile: ' + s.pending_ideas;
-  $('m-shipped').textContent = 'features shipped by AI: ' + s.implemented_ideas;
-  $('m-burned').textContent = 'money incinerated: $' + (s.spent_cents/100).toFixed(2);
-  $('devstate').classList.toggle('awake', s.developing);
-  const pool = s.developing ? DEVSTATES.awake : (pct >= 70 ? DEVSTATES.stirring : DEVSTATES.asleep);
-  $('devtext').textContent = pool[Math.floor(Date.now()/8000) % pool.length];
+
+  $('ns-line').textContent = 'v' + s.live.version + ' — ' + s.live.name;
+  const st = s.standing;
+  $('ns-standing').textContent =
+    st.votes + ' vote' + (st.votes === 1 ? '' : 's') +
+    ' · ' + (st.delight_share == null ? 'unstamped so far'
+             : pct(st.delight_share) + ' would die again') +
+    ' · ' + st.plays + ' death' + (st.plays === 1 ? '' : 's') + ' on record';
+  const rf = $('rerunflag');
+  if (s.live.is_rerun) {
+    rf.style.display = 'inline-block';
+    rf.textContent = 'RERUN — the flagship (v' + s.live.flagship + ' — ' +
+      (s.live.flagship_name || '') + ') returns shortly. no refunds.';
+  } else rf.style.display = 'none';
+
+  $('devstate').classList.toggle('awake', s.dev.working);
+  $('devtext').innerHTML = s.dev.working && s.dev.actions_url
+    ? 'the developer is working. <a href="' + s.dev.actions_url + '" target="_blank" rel="noopener">observe</a>.'
+    : esc(s.dev.mood);
+  $('devmeta').textContent = 'capacity: ' + s.dev.week_slots_left + ' of its weekly runs left · ' +
+    'wheel odds — nothing ' + pct(s.wheel.nothing) + ', rerun ' + pct(s.wheel.rerun) +
+    ', summon ' + pct(s.wheel.summon);
+
+  const h = $('hypo');
+  if (s.last_run && s.last_run.status !== 'triggered') {
+    if (s.last_run.hypothesis) {
+      const ev = s.last_run.evidence;
+      h.innerHTML = '<b>last hypothesis</b> (v' + s.last_run.version + '): “' +
+        esc(s.last_run.hypothesis) + '” — evidence so far: ' +
+        (ev ? pct(ev.delight_share) + ' delight, ' + ev.votes + ' votes, ' + ev.plays + ' plays.'
+            : 'none yet.');
+    } else {
+      h.innerHTML = '<b>last run</b>: ' + esc(s.last_run.status) +
+        (s.last_run.summary ? ' — “' + esc(s.last_run.summary.slice(0, 140)) + '”' : '.');
+    }
+  } else h.textContent = '';
+
+  const pile = $('pile');
+  pile.innerHTML = '';
+  const ideas = s.pile.filter(i => i.status === 'pending');
+  const rest = s.pile.filter(i => i.status !== 'pending').slice(0, 10);
+  if (!ideas.length && !rest.length) {
+    pile.innerHTML = '<div class="idea"><span class="t">the pile is empty. the bar for entry is dying well.</span></div>';
+  }
+  ideas.concat(rest).forEach(i => {
+    const div = document.createElement('div');
+    div.className = 'idea' + (i.status === 'implemented' ? ' done' : i.status === 'declined' ? ' dead' : '');
+    const flag = i.status === 'implemented' ? 'shipped v' + i.version_implemented
+               : i.status === 'declined' ? 'declined' : '';
+    div.innerHTML = '<span class="v">' + i.votes + '×</span><span class="t">' + esc(i.text) +
+      '</span>' + (flag ? '<span class="flag">' + flag + '</span>' : '');
+    div.title = i.text + (i.declined_reason ? ' — declined: ' + i.declined_reason : '');
+    pile.appendChild(div);
+  });
+  $('pilecount').textContent = '— ' + s.pending_ideas + ' of ' + s.pile_cap + ' slots used';
   $('devbadge').style.display = s.dev_mode ? 'block' : 'none';
 }
+
+function esc(t) { const d = document.createElement('div'); d.textContent = t; return d.innerHTML; }
+
 refreshState();
 setInterval(refreshState, 8000);
 
 const HEADLINES = [
   'BREAKING: local bird still bad at game it stars in',
-  'AI developer reportedly "very excited" about your worst ideas',
-  'war chest audit finds chest, finds war, finds no accountability',
-  'economists baffled by game that monetizes its own decay',
-  'players report timer is "fake", management reports players are "correct"',
+  'the wheel is legally required to show you its odds. it resents this.',
+  'management reminds you that dying is free and always will be',
+  'players report the reruns are "confusing". management reports the votes are "counted".',
+  'the developer works in public. it has nowhere to hide. it has checked.',
   'this ticker is load-bearing. do not close the tab.',
-  'the bird has retained counsel. counsel is also a bird.',
-  'REMINDER: every dollar above $1 is a whole extra idea. the machine reads them all.',
+  'REMINDER: clear enough pipes and the death screen becomes a polling place.',
+  'today\'s forecast: 50% nothing, with scattered reruns.',
 ];
 $('tickertext').textContent = ' ' + HEADLINES.join('  ★  ') + '  ★  ';
 </script>

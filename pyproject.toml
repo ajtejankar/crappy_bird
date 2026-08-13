@@ -1,12 +1,11 @@
 [project]
 name = "crappy-bird"
-version = "0.1.0"
-description = "A game that funds its own AI-driven enshittification, one dollar at a time."
+version = "0.2.0"
+description = "A deliberately awful browser game that is also a live RL environment for a coding agent. No money, ever."
 requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.115",
     "uvicorn[standard]>=0.30",
-    "stripe>=10.0",
     "httpx>=0.27",
 ]
 

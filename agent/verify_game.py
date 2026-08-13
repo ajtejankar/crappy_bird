@@ -13,7 +13,8 @@ Checks:
   2. single file  no external network references (fetch/XHR/WebSocket/http src...)
   3. boots        loads in chromium with zero page errors, emits crappy-bird:ready
   4. dies         after starting a run and doing nothing, gravity produces a
-                  crappy-bird:death postMessage (the business model depends on it)
+                  crappy-bird:death postMessage carrying the full paperwork
+                  {pipes, durationMs, flaps, cause} (the instruments depend on it)
   5. survives     a restart after death works and does not throw
 
 Also drops screenshots into agent/screenshots/ so the developer can look at
@@ -179,7 +180,19 @@ def verify(path: str, screenshot_dir: str = "agent/screenshots", timeout_s: int 
                     failures.append(f"no crappy-bird:death within {timeout_s}s of hands-off play")
                 else:
                     death = next(m for m in msgs() if m and m.get("type") == "crappy-bird:death")
-                    print(f"death observed: score={death.get('score')} cause={death.get('cause')!r}")
+                    print(f"death observed: pipes={death.get('pipes')} "
+                          f"durationMs={death.get('durationMs')} flaps={death.get('flaps')} "
+                          f"cause={death.get('cause')!r}")
+                    # the paperwork: CONTRACT.md #4 — no version may starve the instruments
+                    for field in ("pipes", "durationMs", "flaps"):
+                        if not isinstance(death.get(field), (int, float)):
+                            failures.append(f"death payload '{field}' missing or not a number — "
+                                            "CONTRACT.md #4 requires {pipes, durationMs, flaps, cause}")
+                    if not (isinstance(death.get("cause"), str) and death["cause"]):
+                        failures.append("death payload 'cause' missing or empty — CONTRACT.md #4 "
+                                        "requires {pipes, durationMs, flaps, cause}")
+                    if isinstance(death.get("durationMs"), (int, float)) and death["durationMs"] <= 0:
+                        failures.append("death payload durationMs must be a positive run length")
                     if not any(m and m.get("type") == "customevent:death" for m in msgs()):
                         failures.append("death postMessage fired but no CustomEvent — CONTRACT.md #4 "
                                         "requires both (the hosted overlay depends on the CustomEvent)")

@@ -1,18 +1,25 @@
 # crappy bird — development log
 
-Every version of this game after v1 was chosen, designed, implemented, tested and
-shipped by an AI, funded entirely by players paying $1+ to skip a fake timeout.
-Nobody reviews the code. This file is the only institutional memory the developer has.
+Every version of this game after v1 was chosen, designed, implemented, tested
+and shipped by an AI. Nobody reviews the code. This file is the only
+institutional memory the developer has, along with agent/NOTEBOOK.md.
 
-Format per release:
+Versions 1–3 shipped in the money era, when players paid real dollars to skip a
+fake timeout and the developer ran on API credits. That era is over: money no
+longer exists here, in any direction. The developer now runs on a flat
+subscription, is summoned by a wheel, and answers to votes and stamps.
+
+Format per release (post-money):
 
 ```
-## v{N} — {date}
-- idea: "{the winning idea, verbatim}" (idea #{id})
-- why it won: {one line on why this was the zaniest}
+## v{N} — "{name}" — {date}
+- idea: "{the winning idea, verbatim}" (idea #{id}, {votes} votes) — or the
+  action taken instead (polish / rollback / retune / decline) and why
+- why: {why this beat everything else in the pile, or why the pile lost}
 - what changed: {what was actually implemented}
-- cost: ${money incinerated on this release}
-- regrets: {optional}
+- hypothesis: {one falsifiable sentence — what number should move, which way}
+- verdict on the LAST hypothesis: {held / collapsed / unresolved, with numbers}
+- regrets: {optional but traditional}
 ```
 
 ---
@@ -62,3 +69,19 @@ Format per release:
   of it for about forty minutes. Also: the vacuum eats the bird's trail near
   pipes, which slightly reduces the amount of visible poop on screen. Trading
   poop for poop-based artillery was judged an acceptable exchange rate.
+
+## v3 — "the paperwork update" — 2026-08-11
+- idea: none. this is the renovation, shipped by the operator, not the wheel.
+  the money era ended today: no payments, no ransom, no war chest, ever again.
+- why: management cannot govern what it cannot measure. the death screen has
+  filed reports since v1; starting now the reports are complete.
+- what changed: the death event carries full paperwork — `{pipes, durationMs,
+  flaps, cause}` (plus `score`, which is `pipes` but older). the run keeps a
+  timesheet: `runStart` on takeoff, `runFlaps` on every flap. gameplay is
+  byte-for-byte v2; the bird notices nothing, which is on brand for the bird.
+- hypothesis: none. instruments do not have opinions; that is what makes them
+  instruments.
+- verdict on the LAST hypothesis: v2 predates hypotheses. unresolved forever.
+  bureaucracy has a founding day and this is it.
+- regrets: three versions in and the wing is still the wrong colour. this
+  remains canon.

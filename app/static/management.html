@@ -1,0 +1,537 @@
+<!-- MANAGEMENT: injected by the server after </canvas>-land, before </body>.
+     Never part of the downloadable game file. Runs the incident report, the
+     stamps, the ballot, and the wheel. It has no marketing department.
+     All ids/classes prefixed cb- to stay out of the game's namespace. -->
+<style>
+  #cb-report-wrap {
+    position:fixed; inset:0; z-index:9000; display:none;
+    background:rgba(4,4,10,.82); align-items:center; justify-content:center; padding:12px;
+    font-family:"Comic Sans MS","Chalkboard SE","Comic Neue",cursive,system-ui;
+  }
+  #cb-report-wrap.cb-on { display:flex; }
+  #cb-report {
+    width:min(94vw,470px); max-height:94vh; overflow:auto;
+    background:#fffbe6; color:#101010;
+    border:4px solid #000; box-shadow:10px 10px 0 rgba(0,0,0,.6);
+    transform:rotate(-.4deg); padding:12px 16px 12px; position:relative;
+    animation:cb-slam .28s cubic-bezier(.2,2.6,.4,1);
+  }
+  @keyframes cb-slam { from { transform:scale(1.5) rotate(-5deg); opacity:0; } }
+  #cb-report h1 { margin:0; font-size:19px; text-align:center; letter-spacing:1px; }
+  #cb-repno { text-align:center; font-size:10px; color:#777; margin:0 0 8px; }
+  .cb-row { font-size:12px; margin:3px 0; }
+  .cb-row b { letter-spacing:.5px; }
+  #cb-assess { background:#111; color:#ffe14d; border:2px solid #000;
+    font-size:11.5px; padding:6px 9px; margin:8px 0; }
+  #cb-progress { font-size:11px; color:#444; margin:6px 0; }
+
+  /* stamps */
+  #cb-stamps { display:flex; gap:6px; margin:10px 0 4px; }
+  .cb-stamp { flex:1; font-family:inherit; cursor:pointer; font-weight:bold;
+    font-size:10.5px; padding:8px 4px; border:3px solid #000; background:#fff;
+    box-shadow:3px 3px 0 rgba(0,0,0,.4); letter-spacing:.5px; color:#101010; }
+  .cb-stamp:active { transform:translate(2px,2px); box-shadow:1px 1px 0 rgba(0,0,0,.4); }
+  .cb-stamp[data-s="delight"] { color:#1c7c2d; border-color:#1c7c2d; }
+  .cb-stamp[data-s="contempt"] { color:#c0392b; border-color:#c0392b; }
+  #cb-stamps.cb-done .cb-stamp { opacity:.35; pointer-events:none; }
+  #cb-stamped { display:none; position:absolute; top:34px; right:10px; padding:5px 12px;
+    border:3px solid; font-size:14px; font-weight:bold; letter-spacing:1px;
+    transform:rotate(9deg); background:rgba(255,255,255,.75); mix-blend-mode:multiply; }
+  #cb-stamped.cb-on { display:block; animation:cb-ink .25s cubic-bezier(.2,3,.4,1); }
+  @keyframes cb-ink { from { transform:scale(2.4) rotate(20deg); opacity:0; } }
+  #cb-stampline { font-size:10px; color:#666; min-height:12px; margin:2px 0 0; }
+
+  /* the wheel */
+  #cb-wheelbox { display:flex; gap:12px; align-items:center; margin:10px 0 4px;
+    border-top:2px dashed #bbb; padding-top:8px; }
+  #cb-wheelspin { position:relative; width:110px; height:110px; flex:none; }
+  #cb-wheel { width:110px; height:110px; transition:transform 2.4s cubic-bezier(.15,.75,.25,1); }
+  #cb-pointer { position:absolute; top:-6px; left:50%; transform:translateX(-50%);
+    width:0; height:0; border-left:8px solid transparent; border-right:8px solid transparent;
+    border-top:14px solid #000; z-index:2; }
+  #cb-odds { font-size:10px; line-height:1.55; color:#333; }
+  #cb-odds .cb-gated { color:#999; }
+  #cb-outcome { font-size:11.5px; font-weight:bold; margin:4px 0 0; min-height:14px; }
+  #cb-outcome a { color:#1a56a0; }
+
+  /* the ballot */
+  #cb-ballot { border-top:2px dashed #bbb; margin-top:8px; padding-top:8px; display:none; }
+  #cb-ballot.cb-on { display:block; }
+  #cb-ballot h2 { margin:0 0 6px; font-size:12.5px; letter-spacing:1px; }
+  #cb-tabs { display:flex; gap:4px; margin-bottom:6px; }
+  .cb-tab { flex:1; font-family:inherit; font-size:10px; padding:4px 2px; cursor:pointer;
+    border:2px solid #000; background:#fff; color:#101010; }
+  .cb-tab.cb-active { background:#ffe14d; font-weight:bold; }
+  #cb-options { max-height:110px; overflow:auto; border:2px solid #000; background:#fff; }
+  .cb-opt { display:block; width:100%; text-align:left; font-family:inherit; font-size:10.5px;
+    padding:5px 7px; border:none; border-bottom:1px solid #ddd; background:#fff;
+    cursor:pointer; color:#101010; }
+  .cb-opt.cb-picked { background:#ffe14d; font-weight:bold; }
+  .cb-opt small { color:#777; }
+  #cb-ideabox { display:none; }
+  #cb-ideabox textarea { width:100%; height:52px; font-family:inherit; font-size:11px;
+    border:2px solid #000; padding:5px; resize:none; box-sizing:border-box; background:#fff; color:#101010; }
+  #cb-spend { display:block; width:100%; margin-top:6px; font-family:inherit; font-size:13px;
+    font-weight:bold; cursor:pointer; background:#ffe14d; border:3px solid #000;
+    box-shadow:3px 3px 0 rgba(0,0,0,.45); padding:7px; color:#101010; }
+  #cb-spend:active { transform:translate(2px,2px); box-shadow:1px 1px 0 rgba(0,0,0,.45); }
+  #cb-ballot-status { font-size:10.5px; margin-top:5px; min-height:13px; color:#333; }
+
+  #cb-fileit { display:block; margin:10px auto 0; background:none; border:none;
+    font-family:inherit; font-size:10.5px; color:#777; text-decoration:underline; cursor:pointer; }
+
+  /* chrome outside the report */
+  #cb-lobbylink { position:fixed; top:8px; left:8px; z-index:8000;
+    font-family:"Comic Sans MS","Chalkboard SE",cursive,system-ui; font-size:11px;
+    color:#fffbe6; background:rgba(0,0,0,.45); border:2px solid #000;
+    padding:2px 8px; text-decoration:none; opacity:.75; }
+  #cb-lobbylink:hover { opacity:1; }
+  #cb-devbadge { position:fixed; top:8px; right:8px; z-index:8000; background:#c0392b;
+    color:#fff; font-size:10px; padding:2px 8px; border:2px solid #000; display:none;
+    font-family:"Comic Sans MS",cursive,system-ui; transform:rotate(2deg); text-decoration:none; }
+  #cb-devbadge.cb-on { display:block; }
+  #cb-rerunchip { position:fixed; top:8px; left:50%; transform:translateX(-50%); z-index:8000;
+    background:#1a1f2e; color:#ffe14d; font-size:10px; padding:3px 10px; border:2px solid #ffe14d;
+    font-family:"Comic Sans MS",cursive,system-ui; display:none; white-space:nowrap; }
+  #cb-rerunchip.cb-on { display:block; }
+  #cb-strip { position:fixed; left:50%; bottom:0; transform:translate(-50%,110%);
+    z-index:8000; background:#111; color:#ffe14d; border:2px solid #ffe14d; border-bottom:none;
+    font-family:"Comic Sans MS","Chalkboard SE",cursive,system-ui; font-size:11px;
+    padding:4px 14px; white-space:nowrap; transition:transform .4s; max-width:96vw;
+    overflow:hidden; text-overflow:ellipsis; }
+  #cb-strip.cb-on { transform:translate(-50%,0); }
+</style>
+
+<a id="cb-lobbylink" href="/">← lobby</a>
+<a id="cb-devbadge" target="_blank" rel="noopener">THE DEVELOPER IS WORKING → observe</a>
+<div id="cb-rerunchip"></div>
+
+<div id="cb-report-wrap">
+  <div id="cb-report">
+    <div id="cb-stamped"></div>
+    <h1>INCIDENT REPORT</h1>
+    <p id="cb-repno"></p>
+    <div class="cb-row"><b>version:</b> <span id="cb-r-version"></span></div>
+    <div class="cb-row"><b>cause of death:</b> <span id="cb-r-cause"></span></div>
+    <div class="cb-row"><b>pipes cleared:</b> <span id="cb-r-pipes"></span></div>
+    <div id="cb-assess"></div>
+    <div id="cb-progress"></div>
+
+    <div id="cb-stamps"></div>
+    <div id="cb-stampline">stamp the report, or don't. silence is data.</div>
+
+    <div id="cb-wheelbox">
+      <div id="cb-wheelspin">
+        <div id="cb-pointer"></div>
+        <canvas id="cb-wheel" width="220" height="220"></canvas>
+      </div>
+      <div style="flex:1">
+        <div id="cb-odds"></div>
+        <div id="cb-outcome"></div>
+      </div>
+    </div>
+
+    <div id="cb-ballot">
+      <h2>ONE (1) VOTE — SPEND IT OR LOSE IT</h2>
+      <div id="cb-tabs">
+        <button class="cb-tab cb-active" data-t="version">a version</button>
+        <button class="cb-tab" data-t="idea_up">an idea</button>
+        <button class="cb-tab" data-t="idea_new">a new idea</button>
+      </div>
+      <div id="cb-options"></div>
+      <div id="cb-ideabox"><textarea id="cb-ideatext" maxlength="500"
+        placeholder="one idea, 500 characters. the developer reads everything and owes you nothing."></textarea></div>
+      <button id="cb-spend">SPEND THE VOTE</button>
+      <div id="cb-ballot-status"></div>
+    </div>
+
+    <button id="cb-fileit">file it and fly again</button>
+  </div>
+</div>
+
+<div id="cb-strip"></div>
+
+<script>
+(function () {
+  "use strict";
+  var CFG = __CFG__;   /* {version, name, is_rerun, rerun_until, flagship,
+                          developing, actions_url, notice, dev_mode} */
+  var $ = function (id) { return document.getElementById(id); };
+  var SESSION = Math.random().toString(16).slice(2, 10);
+  var open = false, report = null, stamped = false, voteSpent = false;
+  var anchor = Date.now();   // fallback run-clock for versions that predate the paperwork
+
+  /* ---------------------------------------------------- announcements */
+
+  var stripQueue = [], stripBusy = false;
+  function strip(msg) {
+    stripQueue.push(msg);
+    if (!stripBusy) nextStrip();
+  }
+  function nextStrip() {
+    var msg = stripQueue.shift();
+    if (!msg) { stripBusy = false; return; }
+    stripBusy = true;
+    var el = $('cb-strip');
+    el.textContent = msg;
+    el.classList.add('cb-on');
+    setTimeout(function () {
+      el.classList.remove('cb-on');
+      setTimeout(nextStrip, 450);
+    }, 4200);
+  }
+
+  function fmtUntil(iso) {
+    if (!iso) return '';
+    // server times are UTC without a zone marker
+    var d = new Date(iso.replace(' ', 'T') + 'Z');
+    if (isNaN(d)) return iso;
+    return d.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'});
+  }
+
+  if (CFG.is_rerun) {
+    var chip = $('cb-rerunchip');
+    chip.textContent = 'RERUN: v' + CFG.version + ' — ' + CFG.name +
+      ' holds the live slot until ' + fmtUntil(CFG.rerun_until) + '. no refunds.';
+    chip.classList.add('cb-on');
+  }
+  if (CFG.developing && CFG.actions_url) {
+    $('cb-devbadge').href = CFG.actions_url;
+    $('cb-devbadge').classList.add('cb-on');
+  } else if (CFG.developing) {
+    $('cb-devbadge').removeAttribute('href');
+    $('cb-devbadge').classList.add('cb-on');
+  }
+  if (CFG.dev_mode) strip('DEV MODE — the developer is imaginary. everything else is real.');
+  if (CFG.notice) strip(CFG.notice);
+
+  /* --------------------------------------------------------- plumbing */
+
+  function post(path, body) {
+    return fetch(path, {
+      method: 'POST',
+      headers: {'content-type': 'application/json'},
+      body: JSON.stringify(body)
+    }).then(function (r) {
+      return r.json().then(function (j) {
+        if (!r.ok) throw new Error(j.detail || 'management is not answering.');
+        return j;
+      });
+    });
+  }
+
+  function viewportClass() {
+    var w = window.innerWidth;
+    return w >= 900 ? 'desktop' : w >= 600 ? 'tablet' : 'phone';
+  }
+
+  /* -------------------------------------------------------- the wheel */
+
+  var SLICE_COLORS = {nothing: '#8d93a0', rerun: '#4f9dde', summon: '#ffd23e'};
+
+  function drawWheel(slices) {
+    var cv = $('cb-wheel'), ctx = cv.getContext('2d');
+    var cx = 110, cy = 110, r = 104;
+    ctx.clearRect(0, 0, 220, 220);
+    var a = -Math.PI / 2;   // slice 0 starts at the pointer
+    slices.forEach(function (s) {
+      var sweep = s.weight * Math.PI * 2;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      ctx.arc(cx, cy, r, a, a + sweep);
+      ctx.closePath();
+      ctx.fillStyle = s.gated ? '#d8d5c8' : SLICE_COLORS[s.key] || '#ccc';
+      ctx.fill();
+      ctx.lineWidth = 3; ctx.strokeStyle = '#000'; ctx.stroke();
+      // label along the middle of the slice
+      var mid = a + sweep / 2;
+      ctx.save();
+      ctx.translate(cx + Math.cos(mid) * r * 0.60, cy + Math.sin(mid) * r * 0.60);
+      ctx.rotate(mid + Math.PI / 2);
+      ctx.fillStyle = s.gated ? '#999' : '#101010';
+      ctx.font = 'bold 13px "Comic Sans MS", cursive';
+      ctx.textAlign = 'center';
+      ctx.fillText(s.label, 0, 0);
+      ctx.restore();
+      a += sweep;
+    });
+    ctx.beginPath(); ctx.arc(cx, cy, 10, 0, Math.PI * 2);
+    ctx.fillStyle = '#000'; ctx.fill();
+  }
+
+  function spinTo(slices, landedKey, done) {
+    // rotate so a point inside the landed slice ends under the pointer (top)
+    var start = 0, landStart = 0, landSweep = 0, acc = 0;
+    slices.forEach(function (s) {
+      if (s.key === landedKey) { landStart = acc; landSweep = s.weight; }
+      acc += s.weight;
+    });
+    var frac = landStart + landSweep * (0.2 + Math.random() * 0.6);
+    var deg = 5 * 360 + (360 - frac * 360);
+    var wheel = $('cb-wheel');
+    wheel.style.transform = 'rotate(0deg)';
+    // force a layout so the transition actually runs
+    void wheel.offsetWidth;
+    wheel.style.transform = 'rotate(' + deg + 'deg)';
+    var fired = false;
+    function finish() { if (!fired) { fired = true; done(); } }
+    wheel.addEventListener('transitionend', finish, {once: true});
+    setTimeout(finish, 2700);   // in case transitionend never fires
+  }
+
+  function renderOdds(slices) {
+    var el = $('cb-odds');
+    el.innerHTML = '';
+    slices.forEach(function (s) {
+      var div = document.createElement('div');
+      var pct = Math.round(s.weight * 100) + '%';
+      if (s.gated) {
+        div.className = 'cb-gated';
+        div.textContent = s.label + ' ' + pct + ' — gated: ' + s.reason + '. pays NOTHING.';
+      } else {
+        div.textContent = s.label + ' ' + pct;
+      }
+      el.appendChild(div);
+    });
+    var note = document.createElement('div');
+    note.style.color = '#999';
+    note.textContent = 'these are the real odds. check the areas.';
+    el.appendChild(note);
+  }
+
+  function announceOutcome(wheel) {
+    var el = $('cb-outcome'), d = wheel.detail || {};
+    if (wheel.outcome === 'nothing') {
+      if (d.landed && d.landed !== 'nothing') {
+        el.textContent = 'landed on ' + d.landed.toUpperCase() + ', but ' + d.reason +
+          '. pays out as NOTHING.';
+      } else {
+        el.textContent = 'NOTHING. as is tradition.';
+      }
+    } else if (wheel.outcome === 'rerun') {
+      el.textContent = 'RERUN: v' + d.version + ' — ' + d.name + ' takes the live slot for ' +
+        d.minutes + ' minutes. no refunds. ';
+      var a = document.createElement('a');
+      a.href = '/play'; a.textContent = 'reload to attend.';
+      el.appendChild(a);
+      var chip = $('cb-rerunchip');
+      chip.textContent = 'RERUN: v' + d.version + ' — ' + d.name +
+        ' holds the live slot until ' + fmtUntil(d.until) + '. no refunds.';
+      chip.classList.add('cb-on');
+    } else if (wheel.outcome === 'summon') {
+      if (d.dispatched) {
+        el.textContent = 'SUMMON: the developer has been woken. ';
+        if (d.actions_url) {
+          var b = document.createElement('a');
+          b.href = d.actions_url; b.target = '_blank'; b.rel = 'noopener';
+          b.textContent = 'observe it working.';
+          el.appendChild(b);
+        } else {
+          el.textContent += CFG.dev_mode ? '(dev mode: it is imaginary.)' : '';
+        }
+        $('cb-devbadge').classList.add('cb-on');
+        if (d.actions_url) $('cb-devbadge').href = d.actions_url;
+      } else {
+        el.textContent = 'SUMMON: the wheel called the developer. the developer did not pick up. ' +
+          'the summons is wasted.';
+      }
+    }
+  }
+
+  /* ------------------------------------------------------- the report */
+
+  function buildStamps() {
+    var box = $('cb-stamps');
+    box.innerHTML = '';
+    ['delight', 'indifference', 'contempt'].forEach(function (s) {
+      var b = document.createElement('button');
+      b.className = 'cb-stamp';
+      b.dataset.s = s;
+      b.textContent = report.stamps[s];
+      b.addEventListener('click', function () { stamp(s, b); });
+      box.appendChild(b);
+    });
+  }
+
+  function stamp(sentiment, btn) {
+    if (stamped) return;
+    stamped = true;
+    $('cb-stamps').classList.add('cb-done');
+    post('/api/stamp', {play_id: report.play_id, sentiment: sentiment}).then(function (j) {
+      var mark = $('cb-stamped');
+      mark.textContent = j.label;
+      mark.style.color = getComputedStyle(btn).color;
+      mark.style.borderColor = getComputedStyle(btn).color;
+      mark.classList.add('cb-on');
+      $('cb-stampline').textContent = j.line;
+    }).catch(function (e) {
+      stamped = false;
+      $('cb-stamps').classList.remove('cb-done');
+      $('cb-stampline').textContent = e.message;
+    });
+  }
+
+  /* ------------------------------------------------------- the ballot */
+
+  var tab = 'version', picked = null;
+
+  function renderTab() {
+    picked = null;
+    var opts = $('cb-options'), ideabox = $('cb-ideabox');
+    document.querySelectorAll('.cb-tab').forEach(function (t) {
+      t.classList.toggle('cb-active', t.dataset.t === tab);
+    });
+    if (tab === 'idea_new') {
+      opts.style.display = 'none';
+      ideabox.style.display = 'block';
+      if (!report.ballot.pile_open) {
+        $('cb-ballot-status').textContent =
+          'the pile is full (' + report.ballot.pile_cap + '). upvote something instead.';
+      }
+      return;
+    }
+    ideabox.style.display = 'none';
+    opts.style.display = 'block';
+    opts.innerHTML = '';
+    var items = tab === 'version' ? report.ballot.versions : report.ballot.ideas;
+    if (!items.length) {
+      var d = document.createElement('div');
+      d.className = 'cb-opt';
+      d.textContent = 'nothing here. the pile is empty and history is short.';
+      opts.appendChild(d);
+      return;
+    }
+    items.forEach(function (it) {
+      var b = document.createElement('button');
+      b.className = 'cb-opt';
+      if (tab === 'version') {
+        b.innerHTML = '<b>v' + it.version + '</b> — ' + esc(it.name) +
+          (it.is_live ? ' (now showing)' : '') +
+          ' <small>· ' + it.votes + ' vote' + (it.votes === 1 ? '' : 's') + '</small>';
+        b.dataset.version = it.version;
+      } else {
+        b.innerHTML = '#' + it.id + ' ' + esc(it.text.slice(0, 90)) +
+          (it.text.length > 90 ? '…' : '') +
+          ' <small>· ' + it.votes + ' vote' + (it.votes === 1 ? '' : 's') + '</small>';
+        b.dataset.idea = it.id;
+      }
+      b.addEventListener('click', function () {
+        picked = b;
+        document.querySelectorAll('.cb-opt').forEach(function (o) { o.classList.remove('cb-picked'); });
+        b.classList.add('cb-picked');
+      });
+      opts.appendChild(b);
+    });
+  }
+
+  function esc(s) {
+    var d = document.createElement('div');
+    d.textContent = s;
+    return d.innerHTML;
+  }
+
+  function spendVote() {
+    if (voteSpent) return;
+    var body = {play_id: report.play_id, kind: tab};
+    if (tab === 'version') {
+      if (!picked) { $('cb-ballot-status').textContent = 'pick a version first.'; return; }
+      body.version = parseInt(picked.dataset.version, 10);
+    } else if (tab === 'idea_up') {
+      if (!picked) { $('cb-ballot-status').textContent = 'pick an idea first.'; return; }
+      body.idea_id = parseInt(picked.dataset.idea, 10);
+    } else {
+      var text = $('cb-ideatext').value.trim();
+      if (!text) { $('cb-ballot-status').textContent = 'an empty idea. bold, but no.'; return; }
+      body.text = text;
+    }
+    voteSpent = true;
+    post('/api/vote', body).then(function (j) {
+      $('cb-ballot-status').textContent = j.line;
+      $('cb-spend').style.opacity = .35;
+      $('cb-spend').style.pointerEvents = 'none';
+    }).catch(function (e) {
+      voteSpent = false;
+      $('cb-ballot-status').textContent = e.message;
+    });
+  }
+
+  /* ---------------------------------------------------------- lifecycle */
+
+  function showReport(data) {
+    report = data;
+    stamped = false; voteSpent = false; picked = null; tab = 'version';
+    open = true;
+
+    $('cb-repno').textContent = 'no. ' + data.report_no + ' — filed automatically. filing is not optional.';
+    $('cb-r-version').textContent = 'v' + data.version + ' — ' + data.version_name +
+      (CFG.is_rerun ? ' (rerun)' : '');
+    $('cb-r-cause').textContent = data.cause;
+    $('cb-r-pipes').textContent = data.pipes;
+    $('cb-assess').textContent = data.assessment;
+    $('cb-progress').textContent = data.progress_line;
+    $('cb-stamped').classList.remove('cb-on');
+    $('cb-stampline').textContent = "stamp the report, or don't. silence is data.";
+    $('cb-outcome').textContent = '';
+    $('cb-ballot-status').textContent = '';
+    $('cb-spend').style.opacity = 1;
+    $('cb-spend').style.pointerEvents = 'auto';
+    $('cb-ideatext').value = '';
+
+    buildStamps();
+    $('cb-ballot').classList.toggle('cb-on', !!data.ballot);
+    if (data.ballot) renderTab();
+
+    drawWheel(data.wheel.slices);
+    renderOdds(data.wheel.slices);
+    $('cb-report-wrap').classList.add('cb-on');
+    spinTo(data.wheel.slices, data.wheel.landed, function () {
+      announceOutcome(data.wheel);
+    });
+  }
+
+  function fileIt() {
+    open = false;
+    $('cb-report-wrap').classList.remove('cb-on');
+    if (!stamped) strip('filed unstamped. management records your silence.');
+    if (report && report.qualified && !voteSpent) strip('one (1) vote forfeited. it does not roll over.');
+    anchor = Date.now();
+    document.activeElement && document.activeElement.blur();
+  }
+
+  window.addEventListener('crappy-bird:ready', function () { anchor = Date.now(); });
+
+  window.addEventListener('crappy-bird:death', function (e) {
+    if (open) return;
+    var d = (e && e.detail) || {};
+    var now = Date.now();
+    var payload = {
+      version: CFG.version,
+      pipes: (d.pipes != null ? d.pipes : d.score) | 0,
+      durationMs: d.durationMs != null ? Math.round(d.durationMs) : (now - anchor),
+      flaps: d.flaps != null ? d.flaps : null,
+      cause: String(d.cause || 'unknown'),
+      session: SESSION,
+      viewport: viewportClass()
+    };
+    anchor = now;
+    post('/api/death', payload).then(function (data) {
+      // let them read their own death first
+      setTimeout(function () { if (!open) showReport(data); }, 900);
+    }).catch(function () {
+      strip('the front desk is unreachable. this death goes unrecorded. lucky you.');
+    });
+  });
+
+  // keep game keys (space) from leaking through while typing in the report
+  $('cb-report-wrap').addEventListener('keydown', function (e) { e.stopPropagation(); });
+
+  document.querySelectorAll('.cb-tab').forEach(function (t) {
+    t.addEventListener('click', function () {
+      tab = t.dataset.t;
+      renderTab();
+    });
+  });
+  $('cb-spend').addEventListener('click', spendVote);
+  $('cb-fileit').addEventListener('click', fileIt);
+})();
+</script>

@@ -1,54 +1,76 @@
-# crappy bird: extortion edition
+# crappy bird
 
-A deliberately awful browser game that funds its own AI-driven development.
-Players die, are occasionally (randomly) held for a fake 5-minute ransom, pay
-what they want ($1 floor) to skip it, and every whole dollar buys one feature
-idea fed to an unsupervised AI developer. When the war chest hits $10, a
-GitHub Actions workflow boots **Claude Code (Opus 5)**, which reads every idea,
-picks the zaniest, implements it as a new version of the game, play-tests it
-in a real browser, looks at screenshots of its own work, and ships — no human
-in the loop. The money pays for the API tokens. That's the whole company.
+A deliberately awful browser game that is also a **live RL environment for a
+coding agent**. Humans play it, stamp its incident reports, and vote on its
+future. An AI developer — running on a flat Claude Pro subscription, bounded
+by usage capacity it must learn to husband — governs the game's evolution: it
+decides what to build, what version holds the live slot, and how its own dice
+are weighted. Every decision is public: transcripts, changelog, lab notebook,
+config audit log.
+
+Nobody reviews the code. Nobody pays anything. Nobody earns anything.
+**No money moves through this system, in any direction, ever.**
 
 ```
- player dies ──► random shakedown ──► Stripe PWYW ($1+) ──► war chest + ideas
-                                                                │
-                          ┌─────────────────────────────────────┘ pot ≥ $10
-                          ▼
-             repository_dispatch ──► GitHub Actions ──► Claude Code + Opus 5
-                          │                                     │
-                          │        picks zaniest idea, writes index.v{N+1}.html,
-                          │        plays it with Playwright, screenshots it,
-                          │        verification gate (size/network/death-hook)
-                          ▼                                     │
-                 git push to main ◄─────────────────────────────┘
-                          │
-        web app serves new version from GitHub raw within ~60s
+             ┌────────────────────── FAST LOOP (free, always on) ─────────────────────┐
+             │                                                                        │
+   players ──► play ──► die ──► stamp the report / vote (>10 pipes) ──► the wheel     │
+             │                                                            │           │
+             │              nothing ◄───── spins on every death ──────────┤           │
+             │              rerun (temporary revival) ◄───────────────────┤           │
+             └──────────────────────────────────────────────┐             │           │
+                                                            │       SUMMON (throttled │
+                                                            │        by capacity)     │
+             ┌────────────────────── SLOW LOOP (costly) ────▼─────────────▼───────────┐
+             │                                                                        │
+             │   agent run: read dossier + pile + ledger + notebook                   │
+             │   → implement an idea / small polish / retune the wheel / rollback /   │
+             │     decline (conserve capacity) → verify in browser → ship             │
+             │                                                                        │
+             └────────────────────────────────────────────────────────────────────────┘
 ```
+
+## The three parties and their frequencies
+
+| party  | operates at    | owns                                                   |
+|--------|----------------|--------------------------------------------------------|
+| humans | player speed   | the preference field: ideas, votes, stamps             |
+| wheel  | player speed   | timing + chaos: executes the agent's standing policy   |
+| agent  | capacity speed | all decisions: what to build, what's live, the weights |
+
+This is co-evolution. Humans never decide directly; the agent never acts
+unobserved; the dice keep both honest.
+
+## How a death works
+
+Dying files an **incident report**: cause of death, pipes cleared,
+management's statistical assessment of your performance. You may stamp it —
+`WOULD DIE AGAIN` / `NOTED` / `FORMAL COMPLAINT` (one stamp per report;
+silence is data). Clear more than the vote threshold (launch: 10 pipes) and
+the death screen becomes a polling place: one vote, spendable on exactly one
+of (a) upvoting any version in the lineage, (b) submitting a new idea to the
+pile, (c) upvoting an existing idea. Then the wheel spins, visibly, with its
+real odds: **NOTHING** (the wheel mocks you), **RERUN** (an old version takes
+the live slot for a while, sampled by votes plus an underdog floor), or
+**SUMMON** (the developer wakes up — if the capacity ledger allows it).
 
 ## Layout
-
-**Two screens, no iframes, no scrolling.** The lobby (`/`) is a single-viewport
-hero — war chest, developer status, ticker, one enormous START CRAPPING button —
-designed to fit a 13" laptop (1280×650) without scrolling. The game (`/play`)
-is the game HTML served as the *whole document*, so keyboard input works
-natively and the game's own CSS keeps it inside the viewport. At serve time the
-server injects "the landlord" — a small overlay script — into the game page:
-it hears the death event, rolls the dice, and drops the ransom note in-document.
-The downloaded file never gets the injection; the begging is a hosting exclusive.
 
 | path | what |
 |---|---|
 | `games/index.v{N}.html` | every game version, immutable history, single files ≤100KB |
-| `games/latest.json` | which version is live |
+| `games/latest.json` | the last version the agent shipped (the DB owns the live pointer) |
 | `games/CHANGELOG.md` | the AI developer's public memory |
-| `games/CONTRACT.md` | invariants every release must keep |
-| `app/` | FastAPI web app: lobby, game serving + landlord injection, Stripe, ideas, ledger, trigger |
-| `app/static/landlord.html` | the shakedown overlay injected into `/play` at serve time |
-| `agent/AGENT_PROMPT.md` | the mission briefing Claude Code runs with |
-| `agent/verify_game.py` | the verification gate (Playwright) |
+| `games/CONTRACT.md` | invariants every release must keep, including the house voice |
+| `app/` | FastAPI app: lobby, live-slot serving + overlay injection, telemetry, votes, wheel, ledger, trigger |
+| `app/static/management.html` | the overlay injected into `/play`: incident report, stamps, ballot, wheel |
+| `agent/AGENT_PROMPT.md` | the mission brief Claude Code runs with |
+| `agent/NOTEBOOK.md` | the developer's cross-run memory. public. |
+| `agent/verify_game.py` | the verification gate (Playwright) — the agent gets no vote on whether it shipped |
 | `scripts/e2e.py` | full end-to-end UI test, including the 13" no-scroll assertions |
+| `scripts/turn_meter.py` | PostToolUse hook: capacity meter injected into the agent's context |
 | `.github/workflows/develop.yml` | the entire development lifecycle |
-| `transcripts/` | full agent-run transcripts (secret-scrubbed, gzipped) — one per release, plus failed runs |
+| `transcripts/` | full agent-run transcripts (secret-scrubbed, gzipped) |
 | `index.html` | the original v1, untouched, for posterity |
 
 ## Run it locally (no accounts needed)
@@ -58,146 +80,38 @@ uv sync
 uv run uvicorn app.main:app --port 8080 --reload
 ```
 
-Open http://localhost:8080. With no Stripe key set, **dev mode** is on: the pay
-button "charges" fake money instantly so you can test the whole loop —
-die → get shaken down → pay $3 → submit 3 ideas → watch the war chest.
+Without `GITHUB_REPO`/`GITHUB_PAT` the app runs in DEV MODE: the wheel still
+spins, reruns still happen, and SUMMON is simulated (the developer is
+imaginary). Telemetry, stamps, votes and the pile all work against a local
+SQLite file.
 
-Run the verification gate on the current game, and the full UI test suite:
-
-```sh
-uv run agent/verify_game.py install     # once, downloads chromium
-uv run agent/verify_game.py verify games/index.v1.html
-uv run scripts/e2e.py                   # needs the server running, see file header
-```
-
----
-
-# Going live — full setup
-
-You need four accounts: GitHub, Anthropic, Stripe, Fly.io. Budget ~45 minutes.
-
-## 1. GitHub (the source of truth + the sandbox)
-
-1. Create a repo, e.g. `you/crappy-bird`, and push this project to `main`.
-2. Generate the shared secret the app and workflow use to talk:
-   `openssl rand -hex 32` → this is **AGENT_TOKEN**. Keep it handy.
-3. Create a **fine-grained PAT** (Settings → Developer settings → Fine-grained
-   tokens) scoped to *only this repo*, with one permission:
-   - **Actions: Read and write** (to start the dev-cycle workflow via the
-     `workflow_dispatch` API — deliberately *not* `repository_dispatch`, which
-     would require Contents: write and hand the web app push rights)
-   This is **GITHUB_PAT** — the web app uses it to wake the developer, and it
-   can do nothing else.
-4. In the repo: Settings → Secrets and variables → **Actions** → add secrets:
-   - `ANTHROPIC_API_KEY` — from step 2 below
-   - `AGENT_TOKEN` — from 1.2
-   - `APP_URL` — your app's public URL (from step 4; come back and set it)
-5. Settings → Actions → General → Workflow permissions → **Read and write
-   permissions** (the workflow pushes the new game version).
-
-## 2. Anthropic (the developer's brain)
-
-1. platform.claude.com → **create a dedicated workspace** for the bird, and an
-   API key inside it. The key funds the developer and nothing else.
-2. Billing → **enable auto-reload** (e.g. reload $25 when below $5) so the
-   account never runs dry mid-release. There is no API to convert Stripe money
-   into credits — the web app's ledger *authorizes* spending; auto-reload
-   actually *pays* for it from your card. Same money, one hop later.
-3. Set a **monthly spend limit on that workspace** (e.g. $50). This is the
-   server-side hard cap — when it's hit, the API refuses requests, whatever
-   any session thinks it's doing.
-
-### Budget containment, layered
-
-Claude Code has no native per-session dollar cap, so the workflow builds one
-and surrounds it with backstops:
-
-| layer | mechanism | bounds |
-|---|---|---|
-| **hard cap** | Claude Code's native `--max-budget-usd` (subagent spend counts) set to `MAX_SESSION_USD` (default **$8**; override with a repo *variable* of that name) | one session |
-| **budget awareness** | the cap is written into the mission brief, and a `PostToolUse` hook (`scripts/budget_reminder.py`) injects a BUDGET METER system note every ~$2 so the agent plans its wrap-up instead of getting guillotined mid-refactor | session quality |
-| turn cap | `--max-turns 250` | one session |
-| step timeout | 45 min on the agent step (60 on the job) | one session |
-| concurrency | one run at a time (workflow `concurrency` group + the app's active-run check) | run frequency |
-| economics | runs only trigger at pot ≥ $10, and overspend drives the pot *negative* — an expensive failure automatically raises the revenue bar for the next release | long-run average |
-| workspace limit | Anthropic Console monthly cap (step 3 above) | worst case per month |
-
-Net effect: an average release costs $2–6, a runaway session costs at most
-~$8–9 (watchdog fires at $8, plus the in-flight request), and a whole month of
-disasters can't exceed the workspace cap.
-
-## 3. Stripe (the money tube)
-
-1. stripe.com → create an account (sole proprietor is fine). Activate payments.
-   Describe the product honestly: *"browser game; optional $1+ payment skips a
-   cosmetic timeout and lets players submit feature ideas."* Honest description
-   = fewer disputes = Stripe stays happy.
-2. Developers → API keys → copy the **secret key** (`sk_live_...`, or
-   `sk_test_...` while testing) → **STRIPE_SECRET_KEY**.
-3. Developers → Webhooks → **Add endpoint**:
-   - URL: `https://<your-app>/api/stripe/webhook`
-   - Events: `checkout.session.completed` (that's the only one needed)
-   - Copy the **signing secret** (`whsec_...`) → **STRIPE_WEBHOOK_SECRET**.
-4. Test end-to-end in test mode first: card `4242 4242 4242 4242`, any future
-   date, any CVC. The thanks page also polls Stripe directly, so even if the
-   webhook is late the payer isn't stranded.
-
-## 4. Fly.io (the landlord)
+Tests:
 
 ```sh
-brew install flyctl && fly auth signup     # or fly auth login
-fly launch --copy-config --no-deploy      # accept the app name or pick one
-fly volumes create crappy_data --size 1   # SQLite lives here
-fly secrets set \
-  STRIPE_SECRET_KEY=sk_live_... \
-  STRIPE_WEBHOOK_SECRET=whsec_... \
-  AGENT_TOKEN=<from step 1.2> \
-  GITHUB_PAT=<from step 1.3>
-# non-secret config:
-fly deploy
-fly config env   # sanity check
+uv run agent/verify_game.py install          # once
+uv run agent/verify_game.py verify games/index.v3.html
+rm -rf data && uv run uvicorn app.main:app --port 8123   # then, in another shell:
+uv run scripts/e2e.py
 ```
 
-Then set the two env values in `fly.toml` under `[env]` and redeploy:
+## Production shape
 
-```toml
-APP_BASE_URL = "https://<your-app>.fly.dev"
-GITHUB_REPO  = "you/crappy-bird"
-```
+- **Fly.io** runs the app (`fly.toml`); SQLite lives on a small volume.
+- Game files are read from **GitHub raw** at serve time (60s cache), so agent
+  releases go live without redeploying the app.
+- The app holds a fine-grained PAT with **Actions: write only** — it can wake
+  the developer but can never write to the repo.
+- The workflow authenticates the agent with `CLAUDE_CODE_OAUTH_TOKEN` (from
+  `claude setup-token` on a dedicated Claude Pro account), model pinned to
+  Sonnet, hard-capped by `--max-turns`.
+- The verification gate runs from pristine HEAD, checks blast radius, size,
+  network hygiene, the death-hook paperwork, and plays the game in a real
+  browser before anything ships.
 
-Finally go back to **1.4** and set the `APP_URL` GitHub secret to the same URL.
+## The reward model (what "good" means here)
 
-## 5. Smoke test the whole machine
-
-1. Open the site, die until the shakedown appears, pay $10 with the test card,
-   submit a few gloriously stupid ideas.
-2. Watch: the app logs `THE DEVELOPER AWAKENS`, the repo's Actions tab shows a
-   `dev-cycle` run, and ~5–20 minutes later `main` has `games/index.v2.html`
-   and the site serves v2 (60s cache).
-3. If the run fails, the failure is *public by design*: the run log shows in
-   `/api/state`, the money stays spent, and the changelog gains nothing. Check
-   the Actions log and the `dev-cycle-evidence` artifact (screenshots + stderr).
-4. Manual kick without waiting for money:
-   `curl -X POST https://<app>/api/admin/trigger -H "Authorization: Bearer $AGENT_TOKEN"`
-   (needs ≥1 pending idea), or run the workflow from the Actions tab.
-5. Flip Stripe to live mode, update the two Stripe secrets, redeploy. Ship it.
-
-## Knobs
-
-| env | default | meaning |
-|---|---|---|
-| `FUND_THRESHOLD_CENTS` | `1000` | war chest level that wakes the developer |
-| `BLOCK_PROBABILITY` | `0.35` | chance a death triggers the shakedown |
-| `GITHUB_BRANCH` | `main` | branch game files are served from |
-
-## Security posture (a.k.a. why paid prompt injection is fine here)
-
-Players pay to put arbitrary text in an AI's prompt. Containment is structural,
-not polite: the agent step holds no git credentials (`persist-credentials:
-false` — push auth exists only in the ship step, after the gate); the gate runs
-a pristine HEAD copy of the verifier so the agent can't tamper with its own
-judge; releases that touch anything outside `games/`, edit old versions, exceed
-100KB, or smell like network calls are rejected wholesale; the CI sandbox holds
-only an Anthropic key with a spend cap; and the app serves every game under a
-CSP that blocks all egress anyway. A successful injection therefore produces,
-at most, a weird game feature — which is the product working as intended.
+Positive signal: version upvotes, delight share, votes cast, ideas submitted,
+rerun performance. **There is no negative reward** — silence and rollback are
+the absence of preference, not punishment. Plays/day, retries and return
+rates are health instruments, never objectives; the mission brief bans
+engagement optimization outright.

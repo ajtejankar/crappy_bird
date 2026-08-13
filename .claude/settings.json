@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 scripts/budget_reminder.py",
+            "command": "python3 scripts/turn_meter.py",
             "timeout": 10
           }
         ]

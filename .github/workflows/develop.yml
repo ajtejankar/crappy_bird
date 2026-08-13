@@ -1,17 +1,15 @@
 name: dev-cycle
 
 # The entire game development lifecycle, employee-free.
-# Fired by the web app (repository_dispatch) when the war chest crosses the
-# threshold, or by hand (workflow_dispatch) for testing.
+# Fired by the web app (workflow_dispatch) when the wheel lands on SUMMON and
+# the capacity ledger allows it, or by hand for testing.
 #
-# SECURITY NOTE: idea text and everything derived from it (release summaries,
-# changelog entries) is untrusted, paid-for user content. It must NEVER be
+# SECURITY NOTE: idea text and everything derived from it (summaries, names,
+# changelog entries) is untrusted player content. It must NEVER be
 # interpolated into shell via ${{ }} — only via env vars, which the shell
 # treats as data. Keep it that way.
 
 on:
-  repository_dispatch:
-    types: [fund-goal-reached]
   workflow_dispatch: {}
 
 concurrency:
@@ -40,83 +38,60 @@ jobs:
         with:
           node-version: 20
 
-      - name: fetch the idea pile
-        id: ideas
+      - name: fetch the dossier and the pile
         run: |
           curl -fsS -H "Authorization: Bearer $AGENT_TOKEN" \
+            "$APP_URL/api/agent/metrics" -o agent/dossier.json
+          curl -fsS -H "Authorization: Bearer $AGENT_TOKEN" \
             "$APP_URL/api/agent/ideas" -o agent/ideas.json
-          count=$(jq length agent/ideas.json)
-          echo "count=$count" >> "$GITHUB_OUTPUT"
-          echo "fetched $count pending idea(s)"
-
-      - name: report empty pile and stop
-        if: steps.ideas.outputs.count == '0'
-        run: |
-          jq -n '{status:"failed", spend_cents:0, summary:"woke up to an empty idea pile. going back to sleep."}' \
-            | curl -fsS -X POST "$APP_URL/api/agent/complete" \
-                -H "Authorization: Bearer $AGENT_TOKEN" -H "content-type: application/json" -d @-
+          echo "pile: $(jq length agent/ideas.json) pending idea(s)"
+          echo "ledger: $(jq -c .ledger agent/dossier.json)"
 
       - name: install browsers for the verifier
-        if: steps.ideas.outputs.count != '0'
         run: uv run agent/verify_game.py install
 
       - name: install claude code
-        if: steps.ideas.outputs.count != '0'
         run: npm install -g @anthropic-ai/claude-code
 
       - name: THE DEVELOPER WORKS
         id: agent
-        if: steps.ideas.outputs.count != '0'
         timeout-minutes: 45
         env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          # per-session budget cap in USD; override via a repo variable if needed
-          MAX_SESSION_USD: ${{ vars.MAX_SESSION_USD || '8' }}
-          # activates the budget-meter hook (.claude/settings.json -> scripts/budget_reminder.py)
+          # OAuth token from `claude setup-token` on the dedicated Pro account.
+          # Capacity, not dollars, is the scarce resource now.
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          MAX_TURNS: ${{ vars.MAX_TURNS || '250' }}
+          # activates the turn-meter hook (.claude/settings.json -> scripts/turn_meter.py)
           CRAPPY_DEV_RUN: "1"
         run: |
           set +e
-          # Budget, three ways:
-          #  - enforced: --max-budget-usd (native; counts subagents; kills at cap)
+          # Capacity, three ways:
+          #  - enforced: --max-turns (native; kills the session at the cap)
           #  - visible:  the cap is written into the mission brief below
-          #  - metered:  the PostToolUse hook injects a spend meter every ~$2
+          #  - metered:  the PostToolUse hook injects a turn meter at 50/75/90%
           prompt="$(cat agent/AGENT_PROMPT.md)
 
-          ## THIS RUN'S BUDGET
-          You have a hard cap of \$${MAX_SESSION_USD} of API spend for this entire release
-          (subagent spend counts). The harness terminates the session the moment the cap
-          is reached — mid-thought, no appeal. A BUDGET METER system note will appear
-          roughly every \$2 of spend. Scope the work so implementation, verification,
-          changelog and release.json all fit comfortably inside the cap."
+          ## THIS RUN'S CAPACITY
+          You have a hard cap of ${MAX_TURNS} turns for this entire run. The
+          harness terminates the session the moment the cap is reached —
+          mid-thought, no appeal. A TURN METER system note will appear at
+          50/75/90%. The dossier and the pile are already fetched:
+          agent/dossier.json and agent/ideas.json. Size your action so
+          implementation, verification, changelog, notebook and release.json
+          all fit comfortably inside the cap."
 
           # stream-json = the full turn-by-turn transcript (every message, tool
           # call and tool result), one JSON object per line. This is the telemetry.
           claude -p "$prompt" \
-            --model claude-opus-5 \
+            --model sonnet \
             --dangerously-skip-permissions \
             --verbose \
-            --max-turns 250 \
-            --max-budget-usd "$MAX_SESSION_USD" \
+            --max-turns "$MAX_TURNS" \
             --output-format stream-json > agent/claude_transcript.jsonl 2> agent/claude_stderr.log
           echo "claude exit code: $?"
 
-          # price the transcript's usage events (Opus 5: $5/M in, $25/M out,
-          # 1.25x cache write, 0.1x cache read). Tolerant of a partial last line.
-          # Used as the spend fallback when there's no result event (capped run).
-          usage_cost() {
-            jq -Rrs '
-              [ split("\n")[] | select(length > 0) | (fromjson? // empty)
-                | select(.type == "assistant") | .message.usage // empty ]
-              | ( map(.input_tokens // 0) | add // 0 ) as $in
-              | ( map(.output_tokens // 0) | add // 0 ) as $out
-              | ( map(.cache_creation_input_tokens // 0) | add // 0 ) as $cw
-              | ( map(.cache_read_input_tokens // 0) | add // 0 ) as $cr
-              | ($in * 5 + $out * 25 + $cw * 6.25 + $cr * 0.5) / 1000000
-            ' agent/claude_transcript.jsonl 2>/dev/null || echo 0
-          }
-
           # scrub secrets before the transcript leaves this runner in any form —
-          # if the agent ever echoes its environment, the key would be in here
+          # if the agent ever echoes its environment, the token would be in here
           python3 - <<'PY'
           import os, re
           for path in ("agent/claude_transcript.jsonl", "agent/claude_stderr.log"):
@@ -124,7 +99,7 @@ jobs:
                   s = open(path, encoding="utf-8", errors="replace").read()
               except FileNotFoundError:
                   continue
-              for name in ("ANTHROPIC_API_KEY", "AGENT_TOKEN"):
+              for name in ("CLAUDE_CODE_OAUTH_TOKEN", "AGENT_TOKEN"):
                   v = os.environ.get(name)
                   if v:
                       s = s.replace(v, f"[REDACTED:{name}]")
@@ -132,19 +107,35 @@ jobs:
               open(path, "w").write(s)
           PY
 
-          # spend accounting: the result event is authoritative; if the watchdog
-          # killed the session there is no result event, so bill the usage sum
-          cost=$(jq -r 'select(.type=="result") | .total_cost_usd // empty' agent/claude_transcript.jsonl 2>/dev/null | tail -1)
-          [ -z "$cost" ] && cost=$(usage_cost)
-          case "$cost" in (''|0) cost=5;; esac
-          cents=$(printf '%.0f' "$(echo "$cost * 100" | bc -l)")
-          echo "spend_cents=$cents" >> "$GITHUB_OUTPUT"
-          echo "developer session cost: \$$cost"
+          # the ledger's food diary: turns and a token estimate from the transcript
+          turns=$(jq -Rrs '[split("\n")[] | select(length > 0) | (fromjson? // empty)
+                           | select(.type == "assistant")] | length' \
+                  agent/claude_transcript.jsonl 2>/dev/null || echo 0)
+          tokens=$(jq -Rrs '
+              [ split("\n")[] | select(length > 0) | (fromjson? // empty)
+                | select(.type == "assistant") | .message.usage // empty
+                | (.input_tokens // 0) + (.output_tokens // 0)
+                  + (.cache_creation_input_tokens // 0) + (.cache_read_input_tokens // 0) ]
+              | add // 0' agent/claude_transcript.jsonl 2>/dev/null || echo 0)
+          echo "turns=$turns" >> "$GITHUB_OUTPUT"
+          echo "tokens=$tokens" >> "$GITHUB_OUTPUT"
+          echo "developer session: $turns turns, ~$tokens tokens"
+
+          # capacity collision? the ledger learns from these. checked against
+          # stderr and the CLI's final result event only — never against the
+          # agent's own prose, which is allowed to talk about rate limits.
+          capacity=false
+          if grep -qiE 'usage limit|rate.?limit|overloaded|quota|429' agent/claude_stderr.log; then
+            capacity=true
+          fi
+          jq -r 'select(.type=="result") | ((.subtype // "") + " " + ((.result // "") | tostring))' \
+              agent/claude_transcript.jsonl 2>/dev/null | tail -1 \
+            | grep -qiE 'usage limit|rate.?limit|overloaded|quota' && capacity=true
+          echo "capacity=$capacity" >> "$GITHUB_OUTPUT"
           tail -c 2000 agent/claude_stderr.log || true
 
       - name: the gate (verify, or it does not ship)
         id: gate
-        if: steps.ideas.outputs.count != '0'
         run: |
           set +e
           out() { printf '%s=%s\n' "$1" "$(printf '%s' "$2" | tr '\n\r' '  ' | head -c 400)" >> "$GITHUB_OUTPUT"; }
@@ -152,34 +143,78 @@ jobs:
 
           [ -f agent/release.json ] || fail "developer left no release.json"
           jq empty agent/release.json 2>/dev/null || fail "release.json is not valid JSON"
-          version=$(jq -r '.version // empty' agent/release.json)
-          idea_id=$(jq -r '.idea_id // empty' agent/release.json)
+          action=$(jq -r '.action // empty' agent/release.json)
           summary=$(jq -r '.summary // "no summary"' agent/release.json)
+          out action "$action"
           out summary "$summary"
-          [ -n "$version" ] || fail "developer surrendered: $summary"
 
-          old=$(git show HEAD:games/latest.json | jq -r .version)
-          [ "$version" -eq "$((old + 1))" ] 2>/dev/null || fail "version '$version' is not $((old + 1))"
-          [ "$(jq -r .version games/latest.json)" -eq "$version" ] || fail "latest.json not bumped to $version"
-          [ -f "games/index.v${version}.html" ] || fail "games/index.v${version}.html missing"
-          case "$idea_id" in (*[!0-9]*|'') fail "release.json idea_id is not a number";; esac
-          out version "$version"
-          out idea_id "$idea_id"
-
-          # blast-radius check: nothing outside games/ (+ gitignored agent/ scratch) may change
+          # blast-radius check: nothing outside games/ (+ agent/) may change
           illegal=$(git status --porcelain | awk '{print $2}' | grep -vE '^(games/|agent/)' || true)
           [ -z "$illegal" ] || fail "developer touched forbidden files: $illegal"
-          old_changed=$(git diff --name-only -- games/ | grep -vE "index.v${version}.html|latest.json|CHANGELOG.md" || true)
-          [ -z "$old_changed" ] || fail "developer edited history: $old_changed"
 
-          # run the verifier from HEAD, not the working tree — agent/ is a
-          # permitted write path, so the agent could otherwise tamper with it
-          git show HEAD:agent/verify_game.py > "$RUNNER_TEMP/verify_pristine.py"
-          uv run "$RUNNER_TEMP/verify_pristine.py" verify "games/index.v${version}.html" || fail "verification gate rejected the build"
+          # helper: for non-release actions, no game file may change but the changelog
+          game_changes() {
+            git status --porcelain -- games/ | awk '{print $2}' | grep -v 'CHANGELOG.md' || true
+          }
+
+          case "$action" in
+            surrender)
+              fail "developer surrendered: $summary"
+              ;;
+            release|polish)
+              version=$(jq -r '.version // empty' agent/release.json)
+              name=$(jq -r '.name // empty' agent/release.json)
+              idea_id=$(jq -r '.idea_id // empty' agent/release.json)
+              hypothesis=$(jq -r '.hypothesis // empty' agent/release.json)
+              [ -n "$version" ] || fail "developer shipped without a version number"
+              [ -n "$name" ] || fail "a release with no name. names are ballot identity."
+              [ -n "$hypothesis" ] || fail "no hypothesis, no release"
+              if [ "$action" = "release" ]; then
+                case "$idea_id" in (*[!0-9]*|'') fail "a release must name a numeric idea_id";; esac
+              fi
+              old=$(git show HEAD:games/latest.json | jq -r .version)
+              [ "$version" -eq "$((old + 1))" ] 2>/dev/null || fail "version '$version' is not $((old + 1))"
+              [ "$(jq -r .version games/latest.json)" -eq "$version" ] || fail "latest.json not bumped to $version"
+              [ -f "games/index.v${version}.html" ] || fail "games/index.v${version}.html missing"
+              out version "$version"
+              out idea_id "$idea_id"
+              out name "$name"
+              out hypothesis "$hypothesis"
+              # history is sacred: only the new file, latest.json and the changelog may change
+              old_changed=$(git status --porcelain -- games/ | awk '{print $2}' \
+                | grep -vE "index.v${version}.html|latest.json|CHANGELOG.md" || true)
+              [ -z "$old_changed" ] || fail "developer edited history: $old_changed"
+              # run the verifier from HEAD, not the working tree — agent/ is a
+              # permitted write path, so the agent could otherwise tamper with it
+              git show HEAD:agent/verify_game.py > "$RUNNER_TEMP/verify_pristine.py"
+              uv run "$RUNNER_TEMP/verify_pristine.py" verify "games/index.v${version}.html" \
+                || fail "verification gate rejected the build"
+              ;;
+            rollback)
+              rb=$(jq -r '.rollback_to // empty' agent/release.json)
+              case "$rb" in (*[!0-9]*|'') fail "a rollback must name a numeric rollback_to";; esac
+              git cat-file -e "HEAD:games/index.v${rb}.html" 2>/dev/null \
+                || fail "cannot roll back to v${rb}: it never existed"
+              [ -z "$(game_changes)" ] || fail "a rollback edits no game files: $(game_changes)"
+              out rollback_to "$rb"
+              out hypothesis "$(jq -r '.hypothesis // empty' agent/release.json)"
+              ;;
+            retune)
+              [ "$(jq '.config // {} | length' agent/release.json)" -gt 0 ] \
+                || fail "a retune with no config changes is a nap"
+              [ -z "$(game_changes)" ] || fail "a retune edits no game files: $(game_changes)"
+              ;;
+            decline)
+              [ -z "$(game_changes)" ] || fail "a decline edits no game files: $(game_changes)"
+              ;;
+            *)
+              fail "unknown action '$action'"
+              ;;
+          esac
           out verdict success
 
       - name: publish evidence
-        if: steps.ideas.outputs.count != '0' && always()
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: dev-cycle-evidence
@@ -190,12 +225,14 @@ jobs:
           if-no-files-found: ignore
 
       - name: ship it
-        if: steps.ideas.outputs.count != '0' && steps.gate.outputs.verdict == 'success'
+        if: steps.gate.outputs.verdict == 'success'
         env:
+          ACTION: ${{ steps.gate.outputs.action }}
           VERSION: ${{ steps.gate.outputs.version }}
+          NAME: ${{ steps.gate.outputs.name }}
           SUMMARY: ${{ steps.gate.outputs.summary }}
-          IDEA_ID: ${{ steps.gate.outputs.idea_id }}
-          SPEND: ${{ steps.agent.outputs.spend_cents }}
+          ROLLBACK_TO: ${{ steps.gate.outputs.rollback_to }}
+          TURNS: ${{ steps.agent.outputs.turns }}
           GITHUB_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
         run: |
@@ -203,15 +240,23 @@ jobs:
           git config user.email "bird@users.noreply.github.com"
           # credentials exist only in this step, after the gate has passed
           git remote set-url origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${REPO}.git"
-          git add games/
-          SPEND=${SPEND:-0}
-          cost=$(printf '%d.%02d' $((SPEND / 100)) $((SPEND % 100)))
-          git commit -m "v${VERSION}: ${SUMMARY}" \
-                     -m "idea #${IDEA_ID}, chosen and implemented autonomously. cost: \$${cost}"
+          git add games/ agent/NOTEBOOK.md
+          if git diff --cached --quiet; then
+            echo "nothing to commit (a quiet ${ACTION}). the paperwork lives in the app."
+            exit 0
+          fi
+          case "$ACTION" in
+            release|polish) msg="v${VERSION} — ${NAME}: ${SUMMARY}" ;;
+            rollback)       msg="rollback: v${ROLLBACK_TO} retakes the flagship — ${SUMMARY}" ;;
+            retune)         msg="retune: ${SUMMARY}" ;;
+            decline)        msg="decline: ${SUMMARY}" ;;
+            *)              msg="${ACTION}: ${SUMMARY}" ;;
+          esac
+          git commit -m "$msg" -m "decided and implemented autonomously. turns: ${TURNS:-?}."
           git push
 
       - name: archive the transcript (permanent telemetry)
-        if: steps.ideas.outputs.count != '0' && always()
+        if: always()
         env:
           VERDICT: ${{ steps.gate.outputs.verdict }}
           VERSION: ${{ steps.gate.outputs.version }}
@@ -225,6 +270,8 @@ jobs:
           mkdir -p transcripts
           if [ "$VERDICT" = "success" ] && [ -n "$VERSION" ]; then
             dest="transcripts/v${VERSION}.jsonl.gz"
+          elif [ "$VERDICT" = "success" ]; then
+            dest="transcripts/run-${RUN_ID}.jsonl.gz"
           else
             dest="transcripts/failed-run-${RUN_ID}.jsonl.gz"
           fi
@@ -236,30 +283,52 @@ jobs:
           git commit -m "telemetry: agent transcript ($(basename "$dest"))"
           git push || { git pull --rebase && git push; }
 
-      - name: report back to the mothership
-        if: steps.ideas.outputs.count != '0' && always()
+      - name: report back to the front desk
+        if: always()
         env:
           VERDICT: ${{ steps.gate.outputs.verdict }}
           REASON: ${{ steps.gate.outputs.reason }}
-          SUMMARY: ${{ steps.gate.outputs.summary }}
-          VERSION: ${{ steps.gate.outputs.version }}
-          IDEA_ID: ${{ steps.gate.outputs.idea_id }}
-          SPEND: ${{ steps.agent.outputs.spend_cents }}
+          TURNS: ${{ steps.agent.outputs.turns }}
+          TOKENS: ${{ steps.agent.outputs.tokens }}
+          CAPACITY: ${{ steps.agent.outputs.capacity }}
         run: |
           verdict="${VERDICT:-failed}"
-          summary="$SUMMARY"
-          if [ "$verdict" = "failed" ]; then
-            summary="${REASON:-the developer failed in a way it could not even report}"
+          outcome="$verdict"
+          if [ "$verdict" != "success" ] && [ "$CAPACITY" = "true" ]; then
+            outcome="capacity_exhausted"
           fi
-          jq -n \
-            --arg status "$verdict" \
-            --arg version "$VERSION" \
-            --arg idea_id "$IDEA_ID" \
-            --arg spend "${SPEND:-0}" \
-            --arg summary "$summary" \
-            '{status:$status, spend_cents:(($spend|tonumber?) // 0), summary:$summary}
-             + (if $status == "success"
-                then {version:(($version|tonumber?) // null), idea_id:(($idea_id|tonumber?) // null)}
-                else {} end)' \
-            | curl -fsS -X POST "$APP_URL/api/agent/complete" \
-                -H "Authorization: Bearer $AGENT_TOKEN" -H "content-type: application/json" -d @-
+
+          # start from the developer's own paperwork, if it exists and parses
+          base=$(jq -c '{action, version, name, idea_id, hypothesis, rollback_to,
+                         summary, config: (.config // {}), config_note,
+                         declines: (.declines // [])}' agent/release.json 2>/dev/null || echo '{}')
+
+          payload=$(echo "$base" | jq -c \
+            --arg outcome "$outcome" \
+            --arg turns "${TURNS:-}" \
+            --arg tokens "${TOKENS:-}" \
+            --arg reason "${REASON:-}" \
+            '.outcome = $outcome
+             | .turns = (($turns | tonumber?) // null)
+             | .tokens = (($tokens | tonumber?) // null)
+             | if $outcome != "success" then
+                 .summary = (if $reason != "" then $reason
+                             else (.summary // "the developer failed in a way it could not even report") end)
+                 | .config = {} | .declines = []
+               else . end')
+
+          post() {
+            curl -sS -o /tmp/resp -w '%{http_code}' -X POST "$APP_URL/api/agent/complete" \
+              -H "Authorization: Bearer $AGENT_TOKEN" -H "content-type: application/json" -d "$1"
+          }
+          ok() { [ "$1" -ge 200 ] && [ "$1" -lt 400 ]; }
+          code=$(post "$payload")
+          echo "front desk said: HTTP $code $(cat /tmp/resp)"
+          if ! ok "$code"; then
+            # most likely a clamp rejection — retry once with the config stripped,
+            # so the run itself is still recorded honestly
+            stripped=$(echo "$payload" | jq -c '.config = {} | .config_note = "config rejected at the clamp; see run log"')
+            code=$(post "$stripped")
+            echo "retry without config: HTTP $code $(cat /tmp/resp)"
+            ok "$code" || exit 1
+          fi

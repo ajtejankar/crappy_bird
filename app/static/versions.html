@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>the versions — crappy bird</title>
+<style>
+  :root { --gold:#ffe14d; --paper:#fffbe6; }
+  * { box-sizing:border-box; }
+  html,body { margin:0; min-height:100%; background:#0b0d12; color:var(--paper);
+    font-family:"Comic Sans MS","Chalkboard SE","Comic Neue",cursive,system-ui; }
+  #wrap { max-width:820px; margin:0 auto; padding:26px 16px 60px; }
+  h1 { font-size:22px; color:#fff; margin:0 0 2px; }
+  h1 b { color:var(--gold); }
+  #sub { font-size:11px; opacity:.55; margin-bottom:18px; }
+  .card { border:3px solid #000; background:#151923; box-shadow:6px 6px 0 rgba(0,0,0,.45);
+    padding:10px 14px; margin-bottom:12px; position:relative; }
+  .card h2 { margin:0; font-size:15px; color:var(--gold); }
+  .card h2 small { color:var(--paper); opacity:.5; font-weight:normal; }
+  .badge { position:absolute; top:-10px; right:10px; background:#ff00ff; color:#fff;
+    border:2px solid #000; font-size:9px; letter-spacing:1px; padding:2px 8px;
+    transform:rotate(3deg); }
+  .badge.archived { background:#333; color:#999; }
+  .badge.flagship { background:#1c7c2d; }
+  .summary { font-size:11.5px; opacity:.8; margin:5px 0; }
+  .stats { font-size:10.5px; opacity:.65; }
+  .reigns { font-size:9.5px; opacity:.45; margin-top:4px; }
+  a { color:var(--gold); }
+  #foot { font-size:11px; opacity:.7; margin-top:20px; }
+  #note { font-size:10px; opacity:.45; margin-top:8px; line-height:1.5; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <h1>the <b>versions</b></h1>
+  <div id="sub">history fully visible. only the throne playable. this is on purpose.</div>
+  <div id="list">loading the lineage…</div>
+  <div id="foot"><a href="/">← lobby</a> · <a href="/play">play the live version</a> ·
+    <a href="/changelog">development log</a></div>
+  <div id="note">votes are cast at the death screen by players who cleared the bar.
+    a version you miss may return as a rerun — the wheel samples old versions by
+    their votes, plus a floor so underdogs stay alive. campaigning is legal.</div>
+</div>
+<script>
+"use strict";
+function esc(t) { const d = document.createElement('div'); d.textContent = t == null ? '' : t; return d.innerHTML; }
+function pct(x) { return x == null ? '—' : Math.round(x * 100) + '%'; }
+function fdate(s) { return s ? s.slice(0, 10) : '?'; }
+
+fetch('/api/versions').then(r => r.json()).then(vs => {
+  const list = document.getElementById('list');
+  list.innerHTML = '';
+  vs.reverse().forEach(v => {
+    const card = document.createElement('div');
+    card.className = 'card';
+    const badge = v.is_live ? '<span class="badge">NOW SHOWING</span>'
+      : v.is_flagship ? '<span class="badge flagship">FLAGSHIP (rerun in progress)</span>'
+      : '<span class="badge archived">ARCHIVED</span>';
+    const flagshipReigns = v.reigns.filter(r => r.kind === 'flagship');
+    const reruns = v.reigns.filter(r => r.kind === 'rerun').length;
+    const reignTxt = flagshipReigns.map(r =>
+      fdate(r.started_at) + ' → ' + (r.ended_at ? fdate(r.ended_at) : 'now')).join(', ');
+    card.innerHTML = badge +
+      '<h2>v' + v.version + ' — ' + esc(v.name) +
+      ' <small>shipped ' + fdate(v.shipped_at) + '</small></h2>' +
+      '<div class="summary">' + esc(v.summary || 'no summary. suspicious.') + '</div>' +
+      '<div class="stats">' + v.votes + ' vote' + (v.votes === 1 ? '' : 's') +
+      ' · ' + pct(v.delight_share) + ' would die again (' + v.stamps.total + ' stamps)' +
+      ' · ' + v.plays + ' deaths on record</div>' +
+      '<div class="reigns">' +
+      (reignTxt ? 'reigned: ' + reignTxt : 'never held the flagship slot') +
+      (reruns ? ' · ' + reruns + ' rerun' + (reruns === 1 ? '' : 's') : '') +
+      '</div>';
+    list.appendChild(card);
+  });
+}).catch(() => {
+  document.getElementById('list').textContent = 'the lineage is unavailable. history is embarrassed.';
+});
+</script>
+</body>
+</html>
