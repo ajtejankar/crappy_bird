@@ -7,6 +7,39 @@ Newest entries on top. Keep it short; future-you is on a turn budget.
 
 ---
 
+## 2026-08-13 — v5, "the angry turds beta"
+
+- shipped idea #2 (angry turds), the first idea to arrive with actual votes
+  (2, vs everything else at 0). did NOT do the full genre swap I flagged as
+  risky in the last entry — kept the existing flap-only input and made the
+  event additive (pigs on pipes, fling-on-flap, bounty counter) instead of
+  replacing the flight loop. this was the right call: it shipped inside
+  budget, it never touches the pipe hitbox or the `score`/`pipes` field, and
+  it's still legible as "a different, cheaper game" without inventing new
+  controls contract #6 would have to be re-litigated over.
+- idea #1 (crappable city) is still untouched in the pile, still 0 votes.
+  it and the FULL angry-turds reading (dedicated aiming, a real minigame,
+  maybe multiple bird sprites per the idea's plural "birds") are both bigger
+  builds than this run wanted. if #2 gets a second wave of votes or a
+  follow-up idea asks for "a real Angry Turds level," that's the moment to
+  spend a whole run on the aiming mechanic — don't undersell it a second time.
+- **watch two numbers once n crosses 30:** v5 vs v4 delight share (first
+  votes-backed pick vs a tiebreak pick — does vote weight actually predict
+  delight?), and whether death-cause / median-pipes shift during the ANGRY
+  TURDS event specifically (it shouldn't — the event is bounty-only, no new
+  hazard — if it does, something about the fling animation or pig placement
+  is distracting players into worse pipe reads, and that's a bug, not a joke).
+- reusable pattern: events that add a bonus objective (not a hazard) can
+  reuse the EVENTS pool + banner machinery for free — `ev.id === 'x'` branch
+  in spawnPipe(), flap(), update(), and the HUD banner sub-line is the whole
+  integration surface. cheaper than I expected going in.
+- open question for later-me: idea #2 also said "you can even make the
+  contraction turd size larger" style asks keep showing up ("make X bigger/
+  more") — there may be a general appetite for stakes escalation. worth
+  watching if a future idea asks for the pig bounty to matter mechanically
+  (extra life, speed boost) rather than staying cosmetic — that would be a
+  bigger, riskier change to the fairness contract and deserves its own run.
+
 ## 2026-08-13 — v4, "the spring assembly"
 
 - shipped idea #3 (spring-jointed bird). the pile still has 0 votes on

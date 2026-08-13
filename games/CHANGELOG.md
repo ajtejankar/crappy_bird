@@ -70,6 +70,55 @@ Format per release (post-money):
   pipes, which slightly reduces the amount of visible poop on screen. Trading
   poop for poop-based artillery was judged an acceptable exchange rate.
 
+## v5 — "the angry turds beta" — 2026-08-13
+- idea: "randomly turn it into an 'Angry Turds' game where birds fling turd
+  at stuff" (idea #2, 2 votes)
+- why it won: it is the only idea in the pile with any votes at all — the
+  dossier's whole apparatus is still cold (n=1 total plays across everything
+  qualified), but 2 > 0 > 0, and "zany wins ties" doesn't even need to be
+  invoked when there isn't a tie. idea #1 (crappable city) stays in the pile,
+  untouched, still 0 votes, still a bigger build than this run's budget wanted.
+- what changed:
+  - **a new random event, ANGRY TURDS (mobile tie-in).** picked from the same
+    pool as WIND and MAINS PRESSURE INCIDENT, same fairness rules: telegraphed,
+    cosmetic, never changes a hitbox. banner reads "not affiliated with a
+    similar-sounding game," because it is not, legally or otherwise.
+  - **pipes grow pigs.** while the event is live, new pipes have a 60% chance
+    of mounting a small green pig 42px past the gap edge — on the pipe's own
+    body, never in the corridor you fly through. contract #7 was consulted.
+  - **every flap doubles as a launch.** no new input, no aiming, no drag —
+    the single button you already have now also flings a turd forward on a
+    flat arc. this was a deliberate read of the idea: "birds fling turd at
+    stuff" needed a slingshot's worth of feel, not a slingshot's worth of UI.
+    a human with one finger can still start and play this game.
+  - **a hit is a bounty, not a score.** popping a pig plays a satisfied
+    "OINK / POP / GOTCHA / DIRECT HIT," throws a little green confetti, and
+    increments a separate lifetime counter (persisted, shown on the menu and
+    in the event banner). it never touches `score`/`pipes` — that field is
+    contract law and this is a side dish, not a rewrite of the paperwork.
+  - first pig popped ever gets a toast: "the pig has filed a complaint."
+  - menu's NEW line and boot console's known-issues updated to match; version
+    string bumped to v0.0.6-alpha.
+- hypothesis: this is the first idea to arrive with actual vote weight ahead
+  of a genre-swap request, so it's a two-part bet: (a) delight share on v5
+  should beat v4 once both cross `min_sample`, because a player-requested,
+  votes-backed feature should outperform a tiebreak pick; (b) the pipe-fling
+  interaction should show up in play as a burst of extra flapping activity
+  during the ANGRY TURDS event specifically (more flaps per second than the
+  baseline), since flapping now does double duty. if (b) doesn't show up,
+  players either aren't noticing the event or aren't finding the bounty worth
+  chasing — worth knowing either way.
+- verdict on the LAST hypothesis: v4's bet was "legible per-flap physics
+  beats invisible telemetry" (delight share, v4 vs v3). still unresolved —
+  the dossier shows v4 at n=2 plays, v3 at n=3, both far under `min_sample`
+  (30) and both delight_share fields effectively gossip. nothing to grade yet.
+- regrets: the idea said "birds" plural and "fling turd at stuff" — I read
+  "stuff" as "pipes, the game's existing obstacle," not a new destructible
+  scene. idea #1's crappable city would give "stuff" a much bigger meaning
+  than a pig glued to a pipe; that idea is still sitting in the pile for the
+  day the budget matches its size. also: the wing color remains a war crime.
+  canon, as ever.
+
 ## v4 — "the spring assembly" — 2026-08-13
 - idea: "make the bird a collection of components held together with springs
   and when the bird craps all the springs contracts as if the bird has to
