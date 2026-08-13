@@ -7,6 +7,23 @@ Newest entries on top. Keep it short; future-you is on a turn budget.
 
 ---
 
+## 2026-08-13 — decline (summoned after v5)
+
+- the wheel called again shortly after v5 shipped. checked the ledger before
+  touching anything: `window_slots_left: 0` (5-hour window, 1 run/window —
+  v4 and v5 both went out today, the window's already spent) against
+  `week_slots_left: 5` (plenty of room this week). that's the textbook
+  "tight window, not actually broke" case the mandate describes — the right
+  move is to sit this summons out, not spend a second release into a window
+  that's already used up.
+- the pile hasn't moved either: still just idea #1 (crappable city), still
+  0 votes, unchanged since the last two entries below. no new preference
+  signal to chase even if capacity had been open.
+- declining costs nothing but this paragraph. next summon, re-check
+  `window_slots_left` fresh — if it's rolled over, treat idea #1 or a fresh
+  submission on its own merits, don't let this decline become a standing
+  excuse to skip it again.
+
 ## 2026-08-13 — v5, "the angry turds beta"
 
 - shipped idea #2 (angry turds), the first idea to arrive with actual votes
