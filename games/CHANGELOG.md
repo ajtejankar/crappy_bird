@@ -70,6 +70,73 @@ Format per release (post-money):
   pipes, which slightly reduces the amount of visible poop on screen. Trading
   poop for poop-based artillery was judged an acceptable exchange rate.
 
+## v4 — "the spring assembly" — 2026-08-13
+- idea: "make the bird a collection of components held together with springs
+  and when the bird craps all the springs contracts as if the bird has to
+  spend a lot of effort. then once the crap is expelled there is a recoil
+  when the spring relaxes and the whole thing oscillates between contractions
+  and relaxations. you can even make it randomly happen if triggering it on
+  every space/click makes it too crazy. you can even make the contraction
+  turd size larger." (idea #3, 0 votes)
+- why it won: the pile has three ideas, all at 0 votes — the wheel hasn't
+  handed any of them a preference signal yet (v3's own play count is n=1;
+  everything is gossip per the dossier). with votes silent, the tiebreak is
+  "zany wins ties: weird, surprising, specific, funny in play." idea #3 was
+  the most specific of the three — it names an exact mechanism, not just a
+  scene — and it landed on top of a system that was already 80% built: the
+  bird's `press` value has clenched-and-released like a two-beat spring since
+  v0. it just never rang. idea #1 (a crappable city) and idea #2 (a genre
+  swap) are both bigger, riskier builds; #3 was the one turn budget said yes
+  to. #1 and #2 stay in the pile, not declined — they're good, just not
+  today's size.
+- what changed:
+  - **the recoil is now an actual damped spring**, not a single hand-tuned
+    overshoot. `press` and its velocity (`springV`) integrate a real
+    spring-damper (K=130, D=7.4) every tick, so after a release the bird's
+    body genuinely rings — swells past neutral, dips back, swells again,
+    smaller each time — instead of easing to zero on a fixed curve. it was
+    always described as a "two-beat cycle" in the comments; it is now
+    mechanically one.
+  - **he is not one solid part.** the wing and tail read a phase-shifted
+    copy of the spring (offset by `springV`), so they don't move in lockstep
+    with the body — the wing overshoots a beat ahead, the tail lags behind.
+    a bird held together by springs should not move like a single sprite.
+  - **charge**: how fast you mash sets how hard the spring gets wound.
+    flapping lazily produces a small dip and a normal deposit; flapping in a
+    tight burst produces a deeper dip, a bigger visible ring, and (per the
+    idea's own suggestion) a **larger turd** — up to ~1.85x the base size,
+    scaled continuously, with a little random noise so two equally-fast
+    mashes don't look identical. this reuses the size-multiplier field the
+    death sequence already had (`crap(3, true)` was a fixed 1.5x forever;
+    it's now `crap(3, 1.5)`, one point on a scale everything else also sits
+    on) instead of adding a parallel system.
+  - the idea's caution — "triggering it on every space/click might be too
+    crazy" — is answered by making the effect continuous rather than binary:
+    a calm flap barely rings at all, so it never assaults a player who taps
+    politely. nothing new triggers off-input; the mercy is in the scaling,
+    not a coin flip.
+  - menu's "NEW:" line and the boot console's known-issues list updated to
+    match; version string bumped to v0.0.5-alpha, because a visible physics
+    change earns a number even if nobody asked.
+- hypothesis: this is a visual/feel change with no new mechanic a player must
+  learn or avoid — it should not move death cause distribution or median
+  pipes. what it should move is the delight share on v4 versus v3: v3 added
+  invisible plumbing (telemetry only, nothing on screen); v4 puts something
+  new and legible in front of every single flap. if delight share doesn't
+  rise, the theory that "make the existing joke *more itself*" beats "add a
+  new joke" is wrong, and that's worth knowing.
+- verdict on the LAST hypothesis: v3 filed none on purpose ("instruments do
+  not have opinions"). unresolved forever, same as v2's was. n=1 total plays
+  on v3 anyway — nothing gradeable yet, gossip per `min_sample`.
+- regrets: idea #3 also suggested "you can even make it randomly happen" as
+  an alternative to firing on every flap — read literally, that would mean
+  spontaneous crapping with no input, which is a bigger behavioral change
+  than the turn budget wanted to verify carefully today. implemented the
+  spirit (variable, not-always-maximal intensity) without the letter
+  (unprompted triggers). if the pile wants a truly unprompted spasm later,
+  that's a clean follow-up, not a broken promise. also: still didn't touch
+  the wing colour. still canon.
+
 ## v3 — "the paperwork update" — 2026-08-11
 - idea: none. this is the renovation, shipped by the operator, not the wheel.
   the money era ended today: no payments, no ransom, no war chest, ever again.
